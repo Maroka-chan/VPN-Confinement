@@ -1,8 +1,6 @@
 { lib, pkgs, config, ... }:
 with lib;
 let
-  cfg = config.services.vpnnamespace;
-
   namespaceToService = name: def: {
     description = "${name} network interface";
     bindsTo = [ "netns@${name}.service" ];
@@ -204,10 +202,8 @@ in {
     }));
   };
 
-  options.services.vpnnamespace = {
-    namespace = mkOption {
-      type = with types; attrsOf (submodule [ vpnnamespaceOptions ]);
-    };
+  options.vpnnamespaces = mkOption {
+    type = with types; attrsOf (submodule [ vpnnamespaceOptions ]);
   };
 
   config = {
@@ -224,7 +220,7 @@ in {
           ExecStop = "${pkgs.iproute2}/bin/ip netns del %I";
         };
       };
-    } // mapAttrs' (n: v: nameValuePair n (namespaceToService n v)) cfg.namespace;
+    } // mapAttrs' (n: v: nameValuePair n (namespaceToService n v)) config.vpnnamespaces;
   };
 }
 
