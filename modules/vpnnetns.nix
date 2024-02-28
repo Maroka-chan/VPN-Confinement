@@ -87,33 +87,24 @@ let
 
   vpnnamespaceOptions = { name, config, ... }: {
     options = {
-      enable = mkEnableOption (mdDoc "VPN Namespace") // {
+      enable = mkEnableOption (mdDoc "vpn netns") // {
         description = mdDoc ''
           Whether to enable the VPN namespace.
 
-          To access the namespace a veth pair is used to
-          connect the vpn namespace and the default namespace
+          To access the networking namespace(netns) a veth pair
+          is created to connect it and the default namespace
           through a linux bridge. One end of the pair is
-          connected to the linux bridge on the default namespace.
-          The other end is connected to the vpn namespace.
-
-          Systemd services can be run within the namespace by
-          adding these options:
-
-          bindsTo = [ "netns@wg.service" ];
-          requires = [ "network-online.target" ];
-          after = [ "wg.service" ];
-          serviceConfig = {
-            NetworkNamespacePath = "/var/run/netns/wg";
-          };
+          connected to the linux bridge on the default netns.
+          The other end is connected to the vpn netns.
         '';
       };
 
       accessibleFrom = mkOption {
         type = types.listOf types.str;
-        default = [ ];
+        default = [];
         description = mdDoc ''
-          Subnets or specific addresses that the namespace should be accessible to.
+          Subnets or specific addresses that the
+          namespace should be accessible to.
         '';
         example = [
           "10.0.2.0/24"
@@ -139,9 +130,8 @@ let
           The address of the linux bridge on the default namespace.
 
           The linux bridge sits on the default namespace and
-          needs an address to make communication between the
-          default namespace and other namespaces on the
-          bridge possible.
+          needs an address to make communication between connected
+          namespaces possible, including the default namespace.
         '';
       };
 
@@ -149,7 +139,8 @@ let
         type = with types; listOf (attrsOf port);
         default = [];
         description = mdDoc ''
-          A list of pairs mapping a port from the host to a port in the namespace.
+          A list of pairs mapping ports on
+          the host to ports in the namespace.
         '';
         example = [{
           From = 80;
@@ -159,16 +150,12 @@ let
 
       wireguardConfigFile = mkOption {
         type = types.path;
-        default = "/etc/wireguard/wg0.conf";
+        default = null;
+        example = "/secret/wg0.conf";
         description = mdDoc ''
-          Path to the wireguard config to use.
-
-          Note that this is not a wg-quick config.
+          Path to a wg-quick config file.
         '';
       };
-    };
-
-    config = mkIf config.enable {
     };
   };
 in {
@@ -178,12 +165,20 @@ in {
         enable = mkOption {
           type = types.bool;
           default = false;
-         # description = mdDoc ''
-         # '';
+          description = mdDoc ''
+            Whether to confine the systemd service in a
+            networking namespace which routes traffic through a
+            VPN tunnel and forces a specified DNS.
+          '';
         };
         vpnnamespace = mkOption {
           type = types.str;
-          default = "";
+          default = null;
+          example = "wg";
+          description = mdDoc ''
+            Name of the VPN networking namespace to
+            use for the systemd service.
+          '';
         };
       };
 
