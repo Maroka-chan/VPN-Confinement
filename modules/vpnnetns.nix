@@ -199,15 +199,11 @@ in {
 
           BindReadOnlyPaths = [
             "/etc/netns/${vpn}/resolv.conf:/etc/resolv.conf:norbind"
-            # "/etc/netns/${vpn}/nsswitch.conf:/etc/nsswitch.conf:norbind"
             "/var/empty:/var/run/nscd:norbind"
             "/var/empty:/var/run/resolvconf:norbind"
           ];
 
-          #RootDirectory = "/var/empty";
-          #TemporaryFileSystem = "/";
           PrivateMounts = mkDefault true;
-          #ExecStartPre = "${pkgs.mount}/bin/mount --bind /var/empty /var/run/nscd";
         };
       };
     }));
@@ -221,25 +217,6 @@ in {
 
   config = {
     boot.kernel.sysctl."net.ipv4.ip_forward" = 1;
-
-   # environment.etc = {
-   #   "netns/wg/resolv.conf".text = ''
-   #     nameserver 100.64.0.23
-   #   '';
-   #   "netns/wg/nsswitch.conf".text = ''
-   #     passwd:    files systemd
-   #     group:     files [success=merge] systemd
-   #     shadow:    files
-
-   #     hosts:     dns
-   #     networks:  files
-
-   #     ethers:    files
-   #     services:  files
-   #     protocols: files
-   #     rpc:       files
-   #   '';
-   # };
 
     systemd.services = {
       "netns@" = {
