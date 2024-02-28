@@ -17,7 +17,7 @@ let
       ExecStart = let vpnUp = pkgs.writeShellApplication {
         name = "${name}-up";
 
-        runtimeInputs = with pkgs; [ iproute2 wireguard-tools iptables ];
+        runtimeInputs = with pkgs; [ iproute2 wireguard-tools iptables bash ];
 
         text = ''
           # Set up the wireguard interface
@@ -27,7 +27,7 @@ let
 
           # Parse wireguard INI config file
           # shellcheck disable=SC1090
-          source <(grep '=' ${def.wireguardConfigFile} | tr -d ' ')
+          source <(grep -e "DNS" -e "Address" ${def.wireguardConfigFile} | tr -d ' ')
 
           # Add DNS
           mkdir -p /etc/netns/${name}
@@ -37,30 +37,12 @@ let
           IFS=","
           # shellcheck disable=SC2154
           for addr in $Address; do
-            if [[ "$addr" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/?[0-9]{1,2}$ ]]
-            then
               ip -n ${name} address add "$addr" dev ${name}0
-            else
-              ip -6 -n ${name} address add "$addr" dev ${name}0
-            fi
           done
 
           # Set wireguard config
-          WGPVK=$(mktemp /tmp/wgpvk.XXXXXX)
-          chmod 400 "$WGPVK"
-          trap 'rm -f $WGPVK' EXIT
-          # shellcheck disable=SC2154
-          echo "$PrivateKey" > "$WGPVK"
-
-          # shellcheck disable=SC2154
           ip netns exec ${name} \
-            wg set ${name}0 \
-              private-key "$WGPVK" \
-              peer "$PublicKey" \
-              allowed-ips "$AllowedIPs" \
-              endpoint "$Endpoint"
-
-          rm -f "$WGPVK"
+            wg setconf ${name}0 <(wg-quick strip ${def.wireguardConfigFile})
 
           ip -n ${name} link set ${name}0 up
           ip -n ${name} route add default dev ${name}0
