@@ -85,8 +85,8 @@ let
 
   vpnnamespaceOptions = { name, config, ... }: {
     options = {
-      enable = mkEnableOption (mdDoc "vpn netns") // {
-        description = mdDoc ''
+      enable = mkEnableOption "vpn netns" // {
+        description = ''
           Whether to enable the VPN namespace.
 
           To access the networking namespace(netns) a veth pair
@@ -100,7 +100,7 @@ let
       accessibleFrom = mkOption {
         type = types.listOf types.str;
         default = [];
-        description = mdDoc ''
+        description = ''
           Subnets or specific addresses that the
           namespace should be accessible to.
         '';
@@ -113,7 +113,7 @@ let
       namespaceAddress = mkOption {
         type = types.str;
         default = "192.168.15.1";
-        description = mdDoc ''
+        description = ''
           The address of the veth interface connected to the vpn namespace.
 
           This is the address used to reach the vpn namespace from other
@@ -124,7 +124,7 @@ let
       bridgeAddress = mkOption {
         type = types.str;
         default = "192.168.15.5";
-        description = mdDoc ''
+        description = ''
           The address of the linux bridge on the default namespace.
 
           The linux bridge sits on the default namespace and
@@ -136,7 +136,7 @@ let
       portMappings = mkOption {
         type = with types; listOf (attrsOf port);
         default = [];
-        description = mdDoc ''
+        description = ''
           A list of pairs mapping ports on
           the host to ports in the namespace.
         '';
@@ -150,7 +150,7 @@ let
         type = types.path;
         default = null;
         example = "/secret/wg0.conf";
-        description = mdDoc ''
+        description = ''
           Path to a wg-quick config file.
         '';
       };
@@ -158,12 +158,14 @@ let
   };
 in {
   options.systemd.services = mkOption {
+    # TODO: Desc here
+    description = "asdf";
     type = types.attrsOf (types.submodule ({ name, config, ... }: {
       options.vpnconfinement = {
         enable = mkOption {
           type = types.bool;
           default = false;
-          description = mdDoc ''
+          description = ''
             Whether to confine the systemd service in a
             networking namespace which routes traffic through a
             VPN tunnel and forces a specified DNS.
@@ -173,36 +175,41 @@ in {
           type = types.str;
           default = null;
           example = "wg";
-          description = mdDoc ''
+          description = ''
             Name of the VPN networking namespace to
             use for the systemd service.
           '';
         };
       };
 
-      config = let
-        vpn = config.vpnconfinement.vpnnamespace;
-      in mkIf config.vpnconfinement.enable {
-        bindsTo = [ "${vpn}.service" ];
-        after = [ "${vpn}.service" ];
-        wantedBy = [ "${vpn}.service" ];
+      # TODO: This doesn't work, produces:
+      #   error: The option `systemd.services.<name>.after' does not exist. Definition values:
+      #   - In `/nix/store/00000000000000000000000000000000-source/modules/vpnnetns.nix'
+      #config = let
+      #  vpn = config.vpnconfinement.vpnnamespace;
+      #in mkIf config.vpnconfinement.enable {
+      #  bindsTo = [ "${vpn}.service" ];
+      #  after = [ "${vpn}.service" ];
+      #  wantedBy = [ "${vpn}.service" ];
 
-        serviceConfig = {
-          NetworkNamespacePath = "/var/run/netns/${vpn}";
+      #  serviceConfig = {
+      #    NetworkNamespacePath = "/var/run/netns/${vpn}";
 
-          BindReadOnlyPaths = [
-            "/etc/netns/${vpn}/resolv.conf:/etc/resolv.conf:norbind"
-            "/var/empty:/var/run/nscd:norbind"
-            "/var/empty:/var/run/resolvconf:norbind"
-          ];
+      #    BindReadOnlyPaths = [
+      #      "/etc/netns/${vpn}/resolv.conf:/etc/resolv.conf:norbind"
+      #      "/var/empty:/var/run/nscd:norbind"
+      #      "/var/empty:/var/run/resolvconf:norbind"
+      #    ];
 
-          PrivateMounts = mkDefault true;
-        };
-      };
+      #    PrivateMounts = mkDefault true;
+      #  };
+      #};    
     }));
   };
 
   options.vpnnamespaces = mkOption {
+    # TODO: Desc here
+    description = "asdf";
     type = with types; attrsOf (submodule [ vpnnamespaceOptions ]);
   };
 
