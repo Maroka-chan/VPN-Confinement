@@ -10,6 +10,7 @@ A NixOS module which lets you route traffic from systemd services through a VPN 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-23.11";
     vpnconfinement.url = "github:Maroka-chan/VPN-Confinement";
+    vpnconfinement.inputs.nixpkgs.follows "nixpkgs";
   };
 
   outputs = { self, nixpkgs, vpnconfinement, ... }: let
