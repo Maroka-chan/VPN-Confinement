@@ -59,12 +59,25 @@ let
 
           ip -n ${name} addr add ${def.namespaceAddress}/24 dev veth-${name}
           ip -n ${name} link set dev veth-${name} up
+
+          # Set up firewall
+          ip netns exec ${name} iptables -P INPUT DROP
+          ip netns exec ${name} iptables -P FORWARD DROP
         ''
         # Add routes to make the namespace accessible
         + strings.concatMapStrings (x: "ip -n ${name} route add ${x} via ${def.bridgeAddress}" + "\n") def.accessibleFrom
+
         # Add prerouting rules
         + strings.concatMapStrings (x: "iptables -t nat -A PREROUTING -p tcp --dport ${builtins.toString x.from} -j DNAT --to-destination ${def.namespaceAddress}:${builtins.toString x.to}" + "\n") (filter (m: !(builtins.isNull (builtins.match ("tcp|both") m.protocol))) def.portMappings)
-        + strings.concatMapStrings (x: "iptables -t nat -A PREROUTING -p udp --dport ${builtins.toString x.from} -j DNAT --to-destination ${def.namespaceAddress}:${builtins.toString x.to}" + "\n") (filter (m: !(builtins.isNull (builtins.match ("udp|both") m.protocol))) def.portMappings);
+        + strings.concatMapStrings (x: "iptables -t nat -A PREROUTING -p udp --dport ${builtins.toString x.from} -j DNAT --to-destination ${def.namespaceAddress}:${builtins.toString x.to}" + "\n") (filter (m: !(builtins.isNull (builtins.match ("udp|both") m.protocol))) def.portMappings)
+
+        # Add veth INPUT rules
+        + strings.concatMapStrings (x: "ip netns exec ${name} iptables -A INPUT -p tcp --dport ${builtins.toString x.to} -j ACCEPT -i veth-${name}" + "\n") (filter (m: !(builtins.isNull (builtins.match ("tcp|both") m.protocol))) def.portMappings)
+        + strings.concatMapStrings (x: "ip netns exec ${name} iptables -A INPUT -p udp --dport ${builtins.toString x.to} -j ACCEPT -i veth-${name}" + "\n") (filter (m: !(builtins.isNull (builtins.match ("udp|both") m.protocol))) def.portMappings)
+
+        # Add VPN INPUT rules
+        + strings.concatMapStrings (x: "ip netns exec ${name} iptables -A INPUT -p tcp --dport ${builtins.toString x.port} -j ACCEPT -i ${name}0" + "\n") (filter (m: !(builtins.isNull (builtins.match ("tcp|both") m.protocol))) def.openVPNPorts)
+        + strings.concatMapStrings (x: "ip netns exec ${name} iptables -A INPUT -p udp --dport ${builtins.toString x.port} -j ACCEPT -i ${name}0" + "\n") (filter (m: !(builtins.isNull (builtins.match ("udp|both") m.protocol))) def.openVPNPorts);
       }; in "${vpnUp}/bin/${name}-up";
 
       ExecStopPost = let vpnDown = pkgs.writeShellApplication {
@@ -135,15 +148,28 @@ let
         '';
       };
 
-      portMappings = let
-        transportProtocol = mkOptionType {
-          name = "transportProtocol";
-          description = "Transport Layer Protocol";
-          descriptionClass = "noun";
-          check = s: !(builtins.isNull (builtins.match "tcp|udp|both" s));
-          merge = options.mergeEqualOption;
-        };
-      in mkOption {
+      openVPNPorts = mkOption {
+        type = with types; listOf (submodule {
+          options = {
+            port = mkOption {
+              type = port;
+              description = lib.mdDoc "The port to open.";
+            };
+            protocol = mkOption {
+              default = "tcp";
+              example = "both";
+              type = types.enum [ "tcp" "udp" "both" ];
+              description = lib.mdDoc "The transport layer protocol to open the ports for.";
+            };
+          };
+        });
+        default = [];
+        description = ''
+          Ports that should be accessible through the VPN interface.
+        '';
+      };
+
+      portMappings = mkOption {
         type = with types; listOf (submodule {
           options = {
             from = mkOption {
@@ -159,7 +185,7 @@ let
             protocol = mkOption {
               default = "tcp";
               example = "both";
-              type = transportProtocol;
+              type = types.enum [ "tcp" "udp" "both" ];
               description = lib.mdDoc "The transport layer protocol to open the ports for.";
             };
           };
@@ -168,6 +194,11 @@ let
         description = mdDoc ''
           A list of port mappings from
           the host to ports in the namespace.
+          Neither the 'to' or 'from' ports should
+          be open on the default netns as they are
+          routed to the VPN netns.
+          The 'to' ports are automatically opened
+          in the VPN netns.
         '';
         example = [{
           from = 80;
