@@ -63,7 +63,8 @@ let
         # Add routes to make the namespace accessible
         + strings.concatMapStrings (x: "ip -n ${name} route add ${x} via ${def.bridgeAddress}" + "\n") def.accessibleFrom
         # Add prerouting rules
-        + strings.concatMapStrings (x: "iptables -t nat -A PREROUTING -p tcp --dport ${builtins.toString x.From} -j DNAT --to-destination ${def.namespaceAddress}:${builtins.toString x.To}" + "\n") def.portMappings;
+        + strings.concatMapStrings (x: "iptables -t nat -A PREROUTING -p tcp --dport ${builtins.toString x.from} -j DNAT --to-destination ${def.namespaceAddress}:${builtins.toString x.to}" + "\n") (filter (m: !(builtins.isNull (builtins.match ("tcp|both") m.protocol))) def.portMappings)
+        + strings.concatMapStrings (x: "iptables -t nat -A PREROUTING -p udp --dport ${builtins.toString x.from} -j DNAT --to-destination ${def.namespaceAddress}:${builtins.toString x.to}" + "\n") (filter (m: !(builtins.isNull (builtins.match ("udp|both") m.protocol))) def.portMappings);
       }; in "${vpnUp}/bin/${name}-up";
 
       ExecStopPost = let vpnDown = pkgs.writeShellApplication {
@@ -78,7 +79,8 @@ let
           rm -rf /etc/netns/${name}
         ''
         # Delete prerouting rules
-        + strings.concatMapStrings (x: "iptables -t nat -D PREROUTING -p tcp --dport ${builtins.toString x.From} -j DNAT --to-destination ${def.namespaceAddress}:${builtins.toString x.To}" + "\n") def.portMappings;
+        + strings.concatMapStrings (x: "iptables -t nat -D PREROUTING -p tcp --dport ${builtins.toString x.from} -j DNAT --to-destination ${def.namespaceAddress}:${builtins.toString x.to}" + "\n") (filter (m: !(builtins.isNull (builtins.match ("tcp|both") m.protocol))) def.portMappings)
+        + strings.concatMapStrings (x: "iptables -t nat -D PREROUTING -p udp --dport ${builtins.toString x.from} -j DNAT --to-destination ${def.namespaceAddress}:${builtins.toString x.to}" + "\n") (filter (m: !(builtins.isNull (builtins.match ("udp|both") m.protocol))) def.portMappings);
       }; in "${vpnDown}/bin/${name}-down";
     };
   };
@@ -133,16 +135,44 @@ let
         '';
       };
 
-      portMappings = mkOption {
-        type = with types; listOf (attrsOf port);
+      portMappings = let
+        transportProtocol = mkOptionType {
+          name = "transportProtocol";
+          description = "Transport Layer Protocol";
+          descriptionClass = "noun";
+          check = s: !(builtins.isNull (builtins.match "tcp|udp|both" s));
+          merge = options.mergeEqualOption;
+        };
+      in mkOption {
+        type = with types; listOf (submodule {
+          options = {
+            from = mkOption {
+              example = 80;
+              type = port;
+              description = lib.mdDoc "Port on the default netns.";
+            };
+            to = mkOption {
+              example = 443;
+              type = port;
+              description = lib.mdDoc "Port on the VPN netns.";
+            };
+            protocol = mkOption {
+              default = "tcp";
+              example = "both";
+              type = transportProtocol;
+              description = lib.mdDoc "The transport layer protocol to open the ports for.";
+            };
+          };
+        });
         default = [];
         description = mdDoc ''
-          A list of pairs mapping ports on
+          A list of port mappings from
           the host to ports in the namespace.
         '';
         example = [{
-          From = 80;
-          To = 80;
+          from = 80;
+          to = 80;
+          protocol = "tcp";
         }];
       };
 
