@@ -62,6 +62,11 @@ let
           ip netns exec ${name} iptables -A INPUT -i lo -j ACCEPT
           ip netns exec ${name} iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
+          # Drop packets to unspecified DNS
+          ip netns exec ${name} iptables -N dns-fw
+          ip netns exec ${name} iptables -A dns-fw -j DROP
+          ip netns exec ${name} iptables -I OUTPUT -p udp -m udp --dport 53 -j dns-fw
+
           # Add DNS
           rm -rf /etc/netns/${name}
           mkdir -p /etc/netns/${name}
@@ -69,6 +74,7 @@ let
           # shellcheck disable=SC2154
           for ns in $DNS; do
               echo "nameserver $ns" >> /etc/netns/${name}/resolv.conf
+              ip netns exec ${name} iptables -I dns-fw -p udp -d "$ns" -j ACCEPT
           done
         ''
         # Add routes to make the namespace accessible
