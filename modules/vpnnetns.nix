@@ -60,6 +60,7 @@ let
           ip netns exec ${name} iptables -P INPUT DROP
           ip netns exec ${name} iptables -P FORWARD DROP
           ip netns exec ${name} iptables -A INPUT -i lo -j ACCEPT
+          ip netns exec ${name} iptables -A INPUT -m conntrack --ctstate INVALID -j DROP
           ip netns exec ${name} iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
           # Drop packets to unspecified DNS
