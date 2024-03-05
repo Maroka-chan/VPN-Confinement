@@ -27,10 +27,6 @@ let
           # shellcheck disable=SC1090
           source <(grep -e "DNS" -e "Address" ${def.wireguardConfigFile} | tr -d ' ')
 
-          # Add DNS
-          mkdir -p /etc/netns/${name}
-          echo "nameserver $DNS" > /etc/netns/${name}/resolv.conf
-
           # Add Addresses
           IFS=","
           # shellcheck disable=SC2154
@@ -65,6 +61,15 @@ let
           ip netns exec ${name} iptables -P FORWARD DROP
           ip netns exec ${name} iptables -A INPUT -i lo -j ACCEPT
           ip netns exec ${name} iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+          # Add DNS
+          rm -rf /etc/netns/${name}
+          mkdir -p /etc/netns/${name}
+          IFS=","
+          # shellcheck disable=SC2154
+          for ns in $DNS; do
+              echo "nameserver $ns" >> /etc/netns/${name}/resolv.conf
+          done
         ''
         # Add routes to make the namespace accessible
         + strings.concatMapStrings (x: "ip -n ${name} route add ${x} via ${def.bridgeAddress}" + "\n") def.accessibleFrom
