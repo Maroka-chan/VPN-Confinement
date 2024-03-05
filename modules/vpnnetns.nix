@@ -63,6 +63,8 @@ let
           # Set up firewall
           ip netns exec ${name} iptables -P INPUT DROP
           ip netns exec ${name} iptables -P FORWARD DROP
+          ip netns exec ${name} iptables -A INPUT -i lo -j ACCEPT
+          ip netns exec ${name} iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
         ''
         # Add routes to make the namespace accessible
         + strings.concatMapStrings (x: "ip -n ${name} route add ${x} via ${def.bridgeAddress}" + "\n") def.accessibleFrom
