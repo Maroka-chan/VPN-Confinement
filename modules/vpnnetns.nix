@@ -18,6 +18,9 @@ let
         runtimeInputs = with pkgs; [ iproute2 wireguard-tools iptables bash ];
 
         text = ''
+          TMPDIR=$(mktemp -d)
+          cp ${def.wireguardConfigFile} > "$TMPDIR/${name}.conf"
+
           # Set up the wireguard interface
           ip netns add ${name}
           ip link add ${name}0 type wireguard
@@ -25,7 +28,7 @@ let
 
           # Parse wireguard INI config file
           # shellcheck disable=SC1090
-          source <(grep -e "DNS" -e "Address" ${def.wireguardConfigFile} | tr -d ' ')
+          source <(grep -e "DNS" -e "Address" "$TMPDIR/${name}.conf" | tr -d ' ')
 
           # Add DNS
           mkdir -p /etc/netns/${name}
@@ -40,7 +43,7 @@ let
 
           # Set wireguard config
           ip netns exec ${name} \
-            wg setconf ${name}0 <(wg-quick strip ${def.wireguardConfigFile})
+            wg setconf ${name}0 <(wg-quick strip "$TMPDIR/${name}.conf")
 
           ip -n ${name} link set ${name}0 up
           ip -n ${name} route add default dev ${name}0
