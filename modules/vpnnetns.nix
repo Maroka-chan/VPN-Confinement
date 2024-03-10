@@ -18,8 +18,9 @@ let
         runtimeInputs = with pkgs; [ iproute2 wireguard-tools iptables bash ];
 
         text = ''
+          # Rename the config file since WG expects a `*.conf` file
           TMPDIR=$(mktemp -d)
-          cp ${def.wireguardConfigFile} > "$TMPDIR/${name}.conf"
+          cp ${def.wireguardConfigFile} "$TMPDIR/${name}.conf"
 
           # Set up the wireguard interface
           ip netns add ${name}
@@ -29,10 +30,6 @@ let
           # Parse wireguard INI config file
           # shellcheck disable=SC1090
           source <(grep -e "DNS" -e "Address" "$TMPDIR/${name}.conf" | tr -d ' ')
-
-          # Add DNS
-          mkdir -p /etc/netns/${name}
-          echo "nameserver $DNS" > /etc/netns/${name}/resolv.conf
 
           # Add Addresses
           IFS=","
@@ -62,11 +59,43 @@ let
 
           ip -n ${name} addr add ${def.namespaceAddress}/24 dev veth-${name}
           ip -n ${name} link set dev veth-${name} up
+
+          # Set up firewall
+          ip netns exec ${name} iptables -P INPUT DROP
+          ip netns exec ${name} iptables -P FORWARD DROP
+          ip netns exec ${name} iptables -A INPUT -i lo -j ACCEPT
+          ip netns exec ${name} iptables -A INPUT -m conntrack --ctstate INVALID -j DROP
+          ip netns exec ${name} iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+          # Drop packets to unspecified DNS
+          ip netns exec ${name} iptables -N dns-fw
+          ip netns exec ${name} iptables -A dns-fw -j DROP
+          ip netns exec ${name} iptables -I OUTPUT -p udp -m udp --dport 53 -j dns-fw
+
+          # Add DNS
+          rm -rf /etc/netns/${name}
+          mkdir -p /etc/netns/${name}
+          IFS=","
+          # shellcheck disable=SC2154
+          for ns in $DNS; do
+              echo "nameserver $ns" >> /etc/netns/${name}/resolv.conf
+              ip netns exec ${name} iptables -I dns-fw -p udp -d "$ns" -j ACCEPT
+          done
         ''
         # Add routes to make the namespace accessible
         + strings.concatMapStrings (x: "ip -n ${name} route add ${x} via ${def.bridgeAddress}" + "\n") def.accessibleFrom
+
         # Add prerouting rules
-        + strings.concatMapStrings (x: "iptables -t nat -A PREROUTING -p tcp --dport ${builtins.toString x.From} -j DNAT --to-destination ${def.namespaceAddress}:${builtins.toString x.To}" + "\n") def.portMappings;
+        + strings.concatMapStrings (x: "iptables -t nat -A PREROUTING -p tcp --dport ${builtins.toString x.from} -j DNAT --to-destination ${def.namespaceAddress}:${builtins.toString x.to}" + "\n") (filter (m: !(builtins.isNull (builtins.match ("tcp|both") m.protocol))) def.portMappings)
+        + strings.concatMapStrings (x: "iptables -t nat -A PREROUTING -p udp --dport ${builtins.toString x.from} -j DNAT --to-destination ${def.namespaceAddress}:${builtins.toString x.to}" + "\n") (filter (m: !(builtins.isNull (builtins.match ("udp|both") m.protocol))) def.portMappings)
+
+        # Add veth INPUT rules
+        + strings.concatMapStrings (x: "ip netns exec ${name} iptables -A INPUT -p tcp --dport ${builtins.toString x.to} -j ACCEPT -i veth-${name}" + "\n") (filter (m: !(builtins.isNull (builtins.match ("tcp|both") m.protocol))) def.portMappings)
+        + strings.concatMapStrings (x: "ip netns exec ${name} iptables -A INPUT -p udp --dport ${builtins.toString x.to} -j ACCEPT -i veth-${name}" + "\n") (filter (m: !(builtins.isNull (builtins.match ("udp|both") m.protocol))) def.portMappings)
+
+        # Add VPN INPUT rules
+        + strings.concatMapStrings (x: "ip netns exec ${name} iptables -A INPUT -p tcp --dport ${builtins.toString x.port} -j ACCEPT -i ${name}0" + "\n") (filter (m: !(builtins.isNull (builtins.match ("tcp|both") m.protocol))) def.openVPNPorts)
+        + strings.concatMapStrings (x: "ip netns exec ${name} iptables -A INPUT -p udp --dport ${builtins.toString x.port} -j ACCEPT -i ${name}0" + "\n") (filter (m: !(builtins.isNull (builtins.match ("udp|both") m.protocol))) def.openVPNPorts);
       }; in "${vpnUp}/bin/${name}-up";
 
       ExecStopPost = let vpnDown = pkgs.writeShellApplication {
@@ -81,7 +110,8 @@ let
           rm -rf /etc/netns/${name}
         ''
         # Delete prerouting rules
-        + strings.concatMapStrings (x: "iptables -t nat -D PREROUTING -p tcp --dport ${builtins.toString x.From} -j DNAT --to-destination ${def.namespaceAddress}:${builtins.toString x.To}" + "\n") def.portMappings;
+        + strings.concatMapStrings (x: "iptables -t nat -D PREROUTING -p tcp --dport ${builtins.toString x.from} -j DNAT --to-destination ${def.namespaceAddress}:${builtins.toString x.to}" + "\n") (filter (m: !(builtins.isNull (builtins.match ("tcp|both") m.protocol))) def.portMappings)
+        + strings.concatMapStrings (x: "iptables -t nat -D PREROUTING -p udp --dport ${builtins.toString x.from} -j DNAT --to-destination ${def.namespaceAddress}:${builtins.toString x.to}" + "\n") (filter (m: !(builtins.isNull (builtins.match ("udp|both") m.protocol))) def.portMappings);
       }; in "${vpnDown}/bin/${name}-down";
     };
   };
@@ -136,16 +166,62 @@ let
         '';
       };
 
+      openVPNPorts = mkOption {
+        type = with types; listOf (submodule {
+          options = {
+            port = mkOption {
+              type = port;
+              description = lib.mdDoc "The port to open.";
+            };
+            protocol = mkOption {
+              default = "tcp";
+              example = "both";
+              type = types.enum [ "tcp" "udp" "both" ];
+              description = lib.mdDoc "The transport layer protocol to open the ports for.";
+            };
+          };
+        });
+        default = [];
+        description = ''
+          Ports that should be accessible through the VPN interface.
+        '';
+      };
+
       portMappings = mkOption {
-        type = with types; listOf (attrsOf port);
+        type = with types; listOf (submodule {
+          options = {
+            from = mkOption {
+              example = 80;
+              type = port;
+              description = lib.mdDoc "Port on the default netns.";
+            };
+            to = mkOption {
+              example = 443;
+              type = port;
+              description = lib.mdDoc "Port on the VPN netns.";
+            };
+            protocol = mkOption {
+              default = "tcp";
+              example = "both";
+              type = types.enum [ "tcp" "udp" "both" ];
+              description = lib.mdDoc "The transport layer protocol to open the ports for.";
+            };
+          };
+        });
         default = [];
         description = mdDoc ''
-          A list of pairs mapping ports on
+          A list of port mappings from
           the host to ports in the namespace.
+          Neither the 'to' or 'from' ports should
+          be open on the default netns as they are
+          routed to the VPN netns.
+          The 'to' ports are automatically opened
+          in the VPN netns.
         '';
         example = [{
-          From = 80;
-          To = 80;
+          from = 80;
+          to = 80;
+          protocol = "tcp";
         }];
       };
 

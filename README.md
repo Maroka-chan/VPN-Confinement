@@ -10,6 +10,7 @@ A NixOS module which lets you route traffic from systemd services through a VPN 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-23.11";
     vpnconfinement.url = "github:Maroka-chan/VPN-Confinement";
+    vpnconfinement.inputs.nixpkgs.follows "nixpkgs";
   };
 
   outputs = { self, nixpkgs, vpnconfinement, ... }: let
@@ -44,8 +45,10 @@ A NixOS module which lets you route traffic from systemd services through a VPN 
     ];
     wireguardConfigFile = /. + "/secrets/wg0.conf";
     portMappings = [
-      { From = 8080; To = 80; }
-      { From = 443; To = 443; }
+      { from = 22; to = 22; } # tcp is default
+      { from = 22; to = 22; protocol = "tcp"; }
+      { from = 8080; to = 80; protocol = "udp"; }
+      { from = 443; to = 443; protocol = "both"; }
     ];
   };
 
