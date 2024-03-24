@@ -10,11 +10,10 @@ A NixOS module which lets you route traffic from systemd services through a VPN 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-23.11";
     vpnconfinement.url = "github:Maroka-chan/VPN-Confinement";
-    vpnconfinement.inputs.nixpkgs.follows "nixpkgs";
   };
 
-  outputs = { self, nixpkgs, vpnconfinement, ... }: let
-  in {
+  outputs = { self, nixpkgs, vpnconfinement, ... }:
+  {
     # Change hostname, system, etc. as needed.
     nixosConfigurations.hostname = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
@@ -30,29 +29,59 @@ A NixOS module which lets you route traffic from systemd services through a VPN 
 
 # Usage
 
+## Define VPN network namespace
+
+```nix
+vpnnamespaces.<name> = {
+  enable = true;
+  wireguardConfigFile = <path to secret wireguard config file>;
+  accessibleFrom = [
+    "<ip or subnet>"
+  ];
+  portMappings = [{
+      from = <port on host>;
+      to = <port in VPN network namespace>;
+      protocol = "<transport protocol>"; # protocol = "tcp"(default), "udp", or "both"
+  }];
+  openVPNPorts = [{
+    port = <port to access through VPN interface>;
+    protocol = "<transport protocol>"; # protocol = "tcp"(default), "udp", or "both"
+  }];
+};
+```
+
+## Add systemd service to VPN network namespace
+
+```nix
+systemd.services.<name>.vpnconfinement = {
+  enable = true;
+  vpnnamespace = "<network namespace name>";
+};
+```
+
 ## Example
 
 ```nix
 # configuration.nix
 { pkgs, lib, config, ... }:
 {
-  # Define a VPN namespace.
-  # vpnnamespaces.<name>
+  # Define VPN network namespace
   vpnnamespaces.wg = {
     enable = true;
+    wireguardConfigFile = /. + "/secrets/wg0.conf";
     accessibleFrom = [
       "192.168.0.0/24"
     ];
-    wireguardConfigFile = /. + "/secrets/wg0.conf";
     portMappings = [
-      { from = 22; to = 22; } # tcp is default
-      { from = 22; to = 22; protocol = "tcp"; }
-      { from = 8080; to = 80; protocol = "udp"; }
-      { from = 443; to = 443; protocol = "both"; }
+      { from = 9091; to = 9091; }
     ];
+    openVPNPorts = [{
+      port = 60729;
+      protocol = "both";
+    }];
   };
 
-  # Enable and specify VPN namespace to confine service in.
+  # Add systemd service to VPN network namespace.
   systemd.services.transmission.vpnconfinement = {
     enable = true;
     vpnnamespace = "wg";
