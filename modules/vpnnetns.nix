@@ -15,6 +15,9 @@ let
         runtimeInputs = with pkgs; [ iproute2 wireguard-tools iptables bash ];
 
         text = ''
+          # Cleanup if ExecStopPost did not run
+          [ -f "/var/run/netns/${name}" ] && ${vpnDown}/bin/${name}-down
+
           # Set up the wireguard interface
           ip netns add ${name}
           ip link add ${name}0 type wireguard
