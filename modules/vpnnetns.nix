@@ -8,11 +8,8 @@ let
     after = [ "netns@${name}.service" ];
     wantedBy = [ "multi-user.target" ];
 
-    serviceConfig = {
-      Type = "oneshot";
-      RemainAfterExit = true;
-
-      ExecStart = let vpnUp = pkgs.writeShellApplication {
+    serviceConfig = let
+      vpnUp = pkgs.writeShellApplication {
         name = "${name}-up";
 
         runtimeInputs = with pkgs; [ iproute2 wireguard-tools iptables bash ];
@@ -82,8 +79,12 @@ let
         + strings.concatMapStrings (x: "ip -n ${name} route add ${x} via ${def.bridgeAddress}" + "\n") def.accessibleFrom
 
         # Add prerouting rules
-        + strings.concatMapStrings (x: "iptables -t nat -A PREROUTING -p tcp --dport ${builtins.toString x.from} -j DNAT --to-destination ${def.namespaceAddress}:${builtins.toString x.to}" + "\n") (filter (m: !(builtins.isNull (builtins.match ("tcp|both") m.protocol))) def.portMappings)
-        + strings.concatMapStrings (x: "iptables -t nat -A PREROUTING -p udp --dport ${builtins.toString x.from} -j DNAT --to-destination ${def.namespaceAddress}:${builtins.toString x.to}" + "\n") (filter (m: !(builtins.isNull (builtins.match ("udp|both") m.protocol))) def.portMappings)
+        + ''
+          iptables -t nat -N ${name}-prerouting
+          iptables -t nat -A PREROUTING -j ${name}-prerouting
+        ''
+        + strings.concatMapStrings (x: "iptables -t nat -A ${name}-prerouting -p tcp --dport ${builtins.toString x.from} -j DNAT --to-destination ${def.namespaceAddress}:${builtins.toString x.to}" + "\n") (filter (m: !(builtins.isNull (builtins.match ("tcp|both") m.protocol))) def.portMappings)
+        + strings.concatMapStrings (x: "iptables -t nat -A ${name}-prerouting -p udp --dport ${builtins.toString x.from} -j DNAT --to-destination ${def.namespaceAddress}:${builtins.toString x.to}" + "\n") (filter (m: !(builtins.isNull (builtins.match ("udp|both") m.protocol))) def.portMappings)
 
         # Add veth INPUT rules
         + strings.concatMapStrings (x: "ip netns exec ${name} iptables -A INPUT -p tcp --dport ${builtins.toString x.to} -j ACCEPT -i veth-${name}" + "\n") (filter (m: !(builtins.isNull (builtins.match ("tcp|both") m.protocol))) def.portMappings)
@@ -92,12 +93,12 @@ let
         # Add VPN INPUT rules
         + strings.concatMapStrings (x: "ip netns exec ${name} iptables -A INPUT -p tcp --dport ${builtins.toString x.port} -j ACCEPT -i ${name}0" + "\n") (filter (m: !(builtins.isNull (builtins.match ("tcp|both") m.protocol))) def.openVPNPorts)
         + strings.concatMapStrings (x: "ip netns exec ${name} iptables -A INPUT -p udp --dport ${builtins.toString x.port} -j ACCEPT -i ${name}0" + "\n") (filter (m: !(builtins.isNull (builtins.match ("udp|both") m.protocol))) def.openVPNPorts);
-      }; in "${vpnUp}/bin/${name}-up";
+      };
 
-      ExecStopPost = let vpnDown = pkgs.writeShellApplication {
+      vpnDown = pkgs.writeShellApplication {
         name = "${name}-down";
 
-        runtimeInputs = with pkgs; [ iproute2 iptables ];
+        runtimeInputs = with pkgs; [ iproute2 iptables gawk ];
 
         text = ''
           ip netns del ${name}
@@ -106,9 +107,22 @@ let
           rm -rf /etc/netns/${name}
         ''
         # Delete prerouting rules
-        + strings.concatMapStrings (x: "iptables -t nat -D PREROUTING -p tcp --dport ${builtins.toString x.from} -j DNAT --to-destination ${def.namespaceAddress}:${builtins.toString x.to}" + "\n") (filter (m: !(builtins.isNull (builtins.match ("tcp|both") m.protocol))) def.portMappings)
-        + strings.concatMapStrings (x: "iptables -t nat -D PREROUTING -p udp --dport ${builtins.toString x.from} -j DNAT --to-destination ${def.namespaceAddress}:${builtins.toString x.to}" + "\n") (filter (m: !(builtins.isNull (builtins.match ("udp|both") m.protocol))) def.portMappings);
-      }; in "${vpnDown}/bin/${name}-down";
+        + ''
+          while read -r rule
+          do
+            # shellcheck disable=SC2086
+            iptables -t nat -D ''${rule#* }
+          done < <(iptables -t nat -S | awk '/${name}-prerouting/ && !/-N/')
+
+          iptables -t nat -X ${name}-prerouting
+        '';
+      };
+    in {
+      Type = "oneshot";
+      RemainAfterExit = true;
+
+      ExecStart = "${vpnUp}/bin/${name}-up";
+      ExecStopPost = "${vpnDown}/bin/${name}-down";
     };
   };
 
