@@ -104,6 +104,8 @@ let
         runtimeInputs = with pkgs; [ iproute2 iptables gawk ];
 
         text = ''
+          set +o errexit
+
           ip netns del ${name}
           ip link del ${name}-br
           ip link del veth-${name}-br
@@ -118,6 +120,10 @@ let
           done < <(iptables -t nat -S | awk '/${name}-prerouting/ && !/-N/')
 
           iptables -t nat -X ${name}-prerouting
+        ''
+        # Return 0 regardless if some cleanup failed
+        + ''
+          exit 0
         '';
       };
     in {
