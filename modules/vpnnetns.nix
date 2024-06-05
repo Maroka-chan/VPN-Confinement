@@ -3,21 +3,14 @@ with lib;
 let
   namespaceToService = name: def: {
     description = "${name} network interface";
-    bindsTo = [ "netns@${name}.service" ];
-    requires = [ "network-online.target" ];
-    after = [ "netns@${name}.service" ];
+    after = [ "network-pre.target" ];
     wantedBy = [ "multi-user.target" ];
 
     serviceConfig = let
       vpnUp = pkgs.writeShellApplication {
         name = "${name}-up";
-
         runtimeInputs = with pkgs; [ iproute2 wireguard-tools iptables bash ];
-
         text = ''
-          # Cleanup if ExecStopPost did not run
-          [ -f "/var/run/netns/${name}" ] && ${vpnDown}/bin/${name}-down
-
           # Set up the wireguard interface
           ip netns add ${name}
           ip link add ${name}0 type wireguard
@@ -100,12 +93,8 @@ let
 
       vpnDown = pkgs.writeShellApplication {
         name = "${name}-down";
-
         runtimeInputs = with pkgs; [ iproute2 iptables gawk ];
-
         text = ''
-          set +o errexit
-
           ip netns del ${name}
           ip link del ${name}-br
           ip link del veth-${name}-br
@@ -120,10 +109,6 @@ let
           done < <(iptables -t nat -S | awk '/${name}-prerouting/ && !/-N/')
 
           iptables -t nat -X ${name}-prerouting
-        ''
-        # Return 0 regardless if some cleanup failed
-        + ''
-          exit 0
         '';
       };
     in {
@@ -306,19 +291,7 @@ in {
 
   config = {
     boot.kernel.sysctl."net.ipv4.ip_forward" = 1;
-
-    systemd.services = {
-      "netns@" = {
-        description = "%I network namespace";
-        before = [ "network.target" ];
-        serviceConfig = {
-          Type = "oneshot";
-          RemainAfterExit = true;
-          ExecStart = "${pkgs.iproute2}/bin/ip netns add %I";
-          ExecStop = "${pkgs.iproute2}/bin/ip netns del %I";
-        };
-      };
-    } // mapAttrs' (n: v: nameValuePair n (namespaceToService n v)) config.vpnnamespaces;
+    systemd.services = mapAttrs' (n: v: nameValuePair n (namespaceToService n v)) config.vpnnamespaces;
   };
 }
 
