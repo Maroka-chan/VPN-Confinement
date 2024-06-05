@@ -2,7 +2,7 @@
   name = "VPN-Confinement Test";
 
   nodes.machine = { pkgs, ... }: {
-    imports = [ (import ./modules/vpnnetns.nix) ];
+    imports = [ (import ../modules/vpnnetns.nix) ];
 
     environment.etc = {
       "wireguard/wg0.conf".text = ''
