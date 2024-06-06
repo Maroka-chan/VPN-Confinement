@@ -3,7 +3,7 @@ with lib;
 let
   namespaceToService = name: def: {
     description = "${name} network interface";
-    after = [ "network-pre.target" ];
+    before = [ "network-pre.target" ];
     wantedBy = [ "multi-user.target" ];
 
     serviceConfig = let
@@ -11,8 +11,9 @@ let
         name = "${name}-up";
         runtimeInputs = with pkgs; [ iproute2 wireguard-tools iptables bash ];
         text = ''
-          # Set up the wireguard interface
           ip netns add ${name}
+
+          # Set up the wireguard interface
           ip link add ${name}0 type wireguard
           ip link set ${name}0 netns ${name}
 
