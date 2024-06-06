@@ -43,14 +43,13 @@
     machine_max_name_length = { pkgs, ... }: base // {
       vpnnamespaces.vpnname = {
         enable = true;
-        accessibleFrom = [
-          "192.168.0.0/24"
-        ];
         wireguardConfigFile = "/etc/wireguard/wg0.conf";
-        portMappings = [
-          { from = 9091; to = 9091; }
-          { from = 3000; to = 3000; }
-        ];
+      };
+    };
+    machine_dash_in_name = { pkgs, ... }: base // {
+      vpnnamespaces.vpn-nam = {
+        enable = true;
+        wireguardConfigFile = "/etc/wireguard/wg0.conf";
       };
     };
   };
@@ -75,5 +74,11 @@
     machine_max_name_length.succeed('[ $(cat /sys/class/net/vpnname-br/operstate) == "up" ]')
     machine_max_name_length.succeed('[ $(cat /sys/class/net/veth-vpnname-br/operstate) == "up" ]')
     machine_max_name_length.succeed('[ $(ip netns exec vpnname cat /sys/class/net/veth-vpnname/operstate) == "up" ]')
+
+    machine_dash_in_name.wait_for_unit("vpn-nam.service")
+
+    machine_dash_in_name.succeed('[ $(cat /sys/class/net/vpn-nam-br/operstate) == "up" ]')
+    machine_dash_in_name.succeed('[ $(cat /sys/class/net/veth-vpn-nam-br/operstate) == "up" ]')
+    machine_dash_in_name.succeed('[ $(ip netns exec vpn-nam cat /sys/class/net/veth-vpn-nam/operstate) == "up" ]')
   '';
 }
