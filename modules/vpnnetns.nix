@@ -279,8 +279,6 @@ in {
             "/var/empty:/var/run/nscd:norbind"
             "/var/empty:/var/run/resolvconf:norbind"
           ];
-
-          PrivateMounts = mkDefault true;
         };
       };
     }));
