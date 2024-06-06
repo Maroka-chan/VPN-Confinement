@@ -1,7 +1,7 @@
 { lib, pkgs, config, ... }:
 with lib;
 let
-  namespaceToService = name: def: {
+  namespaceToService = name: def: assert builtins.stringLength name < 8; {
     description = "${name} network interface";
     before = [ "network-pre.target" ];
     wantedBy = [ "multi-user.target" ];
