@@ -18,7 +18,8 @@
           Endpoint = 127.0.0.1:51820
         '';
       };
-
+    };
+    basicNetns = {
       vpnnamespaces.wg = {
         enable = true;
         accessibleFrom = [
@@ -32,12 +33,25 @@
       };
     };
   in {
-    machine_dhcp = { pkgs, ... }: base;
-    machine_networkd = { pkgs, ... }: base // {
+    machine_dhcp = { pkgs, ... }: base // basicNetns;
+    machine_networkd = { pkgs, ... }: base // basicNetns // {
       networking.useNetworkd = true;
       systemd.network.enable = true;
       networking.useDHCP = false;
       networking.dhcpcd.enable = false;
+    };
+    machine_max_name_length = { pkgs, ... }: base // {
+      vpnnamespaces.vpnname = {
+        enable = true;
+        accessibleFrom = [
+          "192.168.0.0/24"
+        ];
+        wireguardConfigFile = "/etc/wireguard/wg0.conf";
+        portMappings = [
+          { from = 9091; to = 9091; }
+          { from = 3000; to = 3000; }
+        ];
+      };
     };
   };
 
@@ -55,5 +69,11 @@
     machine_networkd.succeed('[ $(cat /sys/class/net/wg-br/operstate) == "up" ]')
     machine_networkd.succeed('[ $(cat /sys/class/net/veth-wg-br/operstate) == "up" ]')
     machine_networkd.succeed('[ $(ip netns exec wg cat /sys/class/net/veth-wg/operstate) == "up" ]')
+
+    machine_max_name_length.wait_for_unit("vpnname.service")
+
+    machine_max_name_length.succeed('[ $(cat /sys/class/net/vpnname-br/operstate) == "up" ]')
+    machine_max_name_length.succeed('[ $(cat /sys/class/net/veth-vpnname-br/operstate) == "up" ]')
+    machine_max_name_length.succeed('[ $(ip netns exec vpnname cat /sys/class/net/veth-vpnname/operstate) == "up" ]')
   '';
 }
