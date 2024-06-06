@@ -8,8 +8,9 @@ A NixOS module which lets you route traffic from systemd services through a VPN 
 ```nix
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-23.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     vpnconfinement.url = "github:Maroka-chan/VPN-Confinement";
+    vpnconfinement.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = { self, nixpkgs, vpnconfinement, ... }:
@@ -32,7 +33,7 @@ A NixOS module which lets you route traffic from systemd services through a VPN 
 ## Define VPN network namespace
 
 ```nix
-vpnnamespaces.<name> = {
+vpnnamespaces.<name> = { # The name is limited to 7 characters
   enable = true;
   wireguardConfigFile = <path to secret wireguard config file>;
   accessibleFrom = [
@@ -96,4 +97,4 @@ systemd.services.<name>.vpnconfinement = {
 }
 ```
 
-See all options and their descriptions in the [module file](https://github.com/Maroka-chan/VPN-Confinement/blob/a62ed5b97b1556c8c1eb2bc38bf384caab7234fc/modules/vpnnetns.nix#L88).
+See all options and their descriptions in the [module file](https://github.com/Maroka-chan/VPN-Confinement/blob/master/modules/vpnnetns.nix#L138).

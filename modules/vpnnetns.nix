@@ -1,25 +1,19 @@
 { lib, pkgs, config, ... }:
 with lib;
 let
-  namespaceToService = name: def: {
+  namespaceToService = name: def: assert builtins.stringLength name < 8; {
     description = "${name} network interface";
-    bindsTo = [ "netns@${name}.service" ];
-    requires = [ "network-online.target" ];
-    after = [ "netns@${name}.service" ];
+    before = [ "network-pre.target" ];
     wantedBy = [ "multi-user.target" ];
 
     serviceConfig = let
       vpnUp = pkgs.writeShellApplication {
         name = "${name}-up";
-
         runtimeInputs = with pkgs; [ iproute2 wireguard-tools iptables bash ];
-
         text = ''
-          # Cleanup if ExecStopPost did not run
-          [ -f "/var/run/netns/${name}" ] && ${vpnDown}/bin/${name}-down
+          ip netns add ${name}
 
           # Set up the wireguard interface
-          ip netns add ${name}
           ip link add ${name}0 type wireguard
           ip link set ${name}0 netns ${name}
 
@@ -52,6 +46,7 @@ let
           # Set up veth pair to link namespace with host network
           ip link add veth-${name}-br type veth peer name veth-${name} netns ${name}
           ip link set veth-${name}-br master ${name}-br
+          ip link set dev veth-${name}-br up
 
           ip -n ${name} addr add ${def.namespaceAddress}/24 dev veth-${name}
           ip -n ${name} link set dev veth-${name} up
@@ -100,12 +95,8 @@ let
 
       vpnDown = pkgs.writeShellApplication {
         name = "${name}-down";
-
         runtimeInputs = with pkgs; [ iproute2 iptables gawk ];
-
         text = ''
-          set +o errexit
-
           ip netns del ${name}
           ip link del ${name}-br
           ip link del veth-${name}-br
@@ -120,10 +111,6 @@ let
           done < <(iptables -t nat -S | awk '/${name}-prerouting/ && !/-N/')
 
           iptables -t nat -X ${name}-prerouting
-        ''
-        # Return 0 regardless if some cleanup failed
-        + ''
-          exit 0
         '';
       };
     in {
@@ -281,9 +268,8 @@ in {
       config = let
         vpn = config.vpnconfinement.vpnnamespace;
       in mkIf config.vpnconfinement.enable {
-        bindsTo = [ "${vpn}.service" ];
+        requires = [ "${vpn}.service" ];
         after = [ "${vpn}.service" ];
-        wantedBy = [ "${vpn}.service" ];
 
         serviceConfig = {
           NetworkNamespacePath = "/var/run/netns/${vpn}";
@@ -293,8 +279,6 @@ in {
             "/var/empty:/var/run/nscd:norbind"
             "/var/empty:/var/run/resolvconf:norbind"
           ];
-
-          PrivateMounts = mkDefault true;
         };
       };
     }));
@@ -306,19 +290,7 @@ in {
 
   config = {
     boot.kernel.sysctl."net.ipv4.ip_forward" = 1;
-
-    systemd.services = {
-      "netns@" = {
-        description = "%I network namespace";
-        before = [ "network.target" ];
-        serviceConfig = {
-          Type = "oneshot";
-          RemainAfterExit = true;
-          ExecStart = "${pkgs.iproute2}/bin/ip netns add %I";
-          ExecStop = "${pkgs.iproute2}/bin/ip netns del %I";
-        };
-      };
-    } // mapAttrs' (n: v: nameValuePair n (namespaceToService n v)) config.vpnnamespaces;
+    systemd.services = mapAttrs' (n: v: nameValuePair n (namespaceToService n v)) config.vpnnamespaces;
   };
 }
 
