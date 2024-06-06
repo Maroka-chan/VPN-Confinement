@@ -268,9 +268,8 @@ in {
       config = let
         vpn = config.vpnconfinement.vpnnamespace;
       in mkIf config.vpnconfinement.enable {
-        bindsTo = [ "${vpn}.service" ];
+        requires = [ "${vpn}.service" ];
         after = [ "${vpn}.service" ];
-        wantedBy = [ "${vpn}.service" ];
 
         serviceConfig = {
           NetworkNamespacePath = "/var/run/netns/${vpn}";
