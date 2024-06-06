@@ -46,6 +46,7 @@ let
           # Set up veth pair to link namespace with host network
           ip link add veth-${name}-br type veth peer name veth-${name} netns ${name}
           ip link set veth-${name}-br master ${name}-br
+          ip link set dev veth-${name}-br up
 
           ip -n ${name} addr add ${def.namespaceAddress}/24 dev veth-${name}
           ip -n ${name} link set dev veth-${name} up
