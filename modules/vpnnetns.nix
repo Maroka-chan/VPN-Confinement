@@ -268,7 +268,7 @@ in {
       config = let
         vpn = config.vpnconfinement.vpnnamespace;
       in mkIf config.vpnconfinement.enable {
-        requires = [ "${vpn}.service" ];
+        bindsTo = [ "${vpn}.service" ];
         after = [ "${vpn}.service" ];
 
         serviceConfig = {
