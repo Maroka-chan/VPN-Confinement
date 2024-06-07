@@ -274,10 +274,13 @@ in {
         serviceConfig = {
           NetworkNamespacePath = "/var/run/netns/${vpn}";
 
+          InaccessiblePaths = [
+            "/var/run/nscd"
+            "/var/run/resolvconf"
+          ];
+
           BindReadOnlyPaths = [
             "/etc/netns/${vpn}/resolv.conf:/etc/resolv.conf:norbind"
-            "/var/empty:/var/run/nscd:norbind"
-            "/var/empty:/var/run/resolvconf:norbind"
           ];
         };
       };
