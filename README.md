@@ -97,4 +97,4 @@ systemd.services.<name>.vpnconfinement = {
 }
 ```
 
-See all options and their descriptions in the [module file](https://github.com/Maroka-chan/VPN-Confinement/blob/master/modules/vpnnetns.nix#L138).
+See all options and their descriptions in the [module file](https://github.com/Maroka-chan/VPN-Confinement/blob/master/modules/options.nix).
