@@ -86,7 +86,7 @@ let
           ${firewallUtils.generateNetNSInputRules name "veth-${name}" def.portMappings}
 
           # Add VPN INPUT rules
-          ${firewallUtils.generateNetNSInputRules name "${name}0" def.openVPNPorts}
+          ${firewallUtils.generateNetNSVPNInputRules name "${name}0" def.openVPNPorts}
         '';
       };
 

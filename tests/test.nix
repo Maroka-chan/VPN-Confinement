@@ -28,8 +28,11 @@
         wireguardConfigFile = "/etc/wireguard/wg0.conf";
         portMappings = [
           { from = 9091; to = 9091; }
-          { from = 3000; to = 3000; }
         ];
+        openVPNPorts = [{
+          port = 60729;
+          protocol = "both";
+        }];
       };
     };
   in {
