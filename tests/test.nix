@@ -24,6 +24,8 @@
         enable = true;
         accessibleFrom = [
           "192.168.0.0/24"
+          "10.0.0.0/8"
+          "127.0.0.1"
         ];
         wireguardConfigFile = "/etc/wireguard/wg0.conf";
         portMappings = [

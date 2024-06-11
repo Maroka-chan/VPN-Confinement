@@ -75,7 +75,7 @@ let
           done
 
           # Add routes to make the namespace accessible
-          ${strings.concatMapStrings (x: "ip -n ${name} route add ${x} via ${def.bridgeAddress}") def.accessibleFrom}
+          ${strings.concatMapStrings (x: "ip -n ${name} route add ${x} via ${def.bridgeAddress}" + "\n") def.accessibleFrom}
 
           # Add prerouting rules
           iptables -t nat -N ${name}-prerouting
