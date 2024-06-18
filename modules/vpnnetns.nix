@@ -26,7 +26,7 @@ let
           IFS=","
           # shellcheck disable=SC2154
           for addr in $Address; do
-              ip -n ${name} address add "$addr" dev ${name}0
+            ip -n ${name} address add "$addr" dev ${name}0
           done
 
           # Set wireguard config
@@ -70,8 +70,9 @@ let
           IFS=","
           # shellcheck disable=SC2154
           for ns in $DNS; do
-              echo "nameserver $ns" >> /etc/netns/${name}/resolv.conf
-              ip netns exec ${name} iptables -I dns-fw -p udp -d "$ns" -j ACCEPT
+            if [[ $ns == *":"* ]]; then continue; fi  # Skip ipv6
+            echo "nameserver $ns" >> /etc/netns/${name}/resolv.conf
+            ip netns exec ${name} iptables -I dns-fw -p udp -d "$ns" -j ACCEPT
           done
 
           # Add routes to make the namespace accessible
