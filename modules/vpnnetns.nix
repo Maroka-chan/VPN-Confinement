@@ -29,9 +29,30 @@ let
             ip -n ${name} address add "$addr" dev ${name}0
           done
 
+          # Strips the config of wg-quick settings
+          shopt -s extglob
+          strip_wgquick_config() {
+            CONFIG_FILE="$1"
+            [[ -e $CONFIG_FILE ]] || (echo "'$CONFIG_FILE' does not exist" >&2 && exit 1)
+            CONFIG_FILE="$(readlink -f "$CONFIG_FILE")"
+            local interface_section=0
+            while read -r line || [[ -n $line ]]; do
+              key=''${line//=/ }
+              [[ $key == "["* ]] && interface_section=0
+              [[ $key == "[Interface]" ]] && interface_section=1
+              if [ $interface_section -eq 1 ] &&
+                [[ $key =~ Address|MTU|DNS|Table|PreUp|PreDown|PostUp|PostDown|SaveConfig ]]
+              then
+                continue
+              fi
+              WG_CONFIG+="$line"$'\n'
+            done < "$CONFIG_FILE"
+            echo "$WG_CONFIG"
+          }
+
           # Set wireguard config
           ip netns exec ${name} \
-            wg setconf ${name}0 <(wg-quick strip ${def.wireguardConfigFile})
+            wg setconf ${name}0 <(strip_wgquick_config ${def.wireguardConfigFile})
 
           ip -n ${name} link set ${name}0 up
           ip -n ${name} route add default dev ${name}0

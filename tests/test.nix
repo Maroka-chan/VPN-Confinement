@@ -5,8 +5,8 @@
     base = {
       imports = [ (import ../modules/vpnnetns.nix) ];
 
-      environment.etc = {
-        "wireguard/wg0.conf".text = ''
+      environment.etc = let
+        config = ''
           [Interface]
           PrivateKey = 8PZQ8felOfsPGDaAPdHaJlkf0hcCn6JGhU1DJq5Ts3M=
           Address = 10.100.0.2/24
@@ -17,6 +17,9 @@
           AllowedIPs = 0.0.0.0/0
           Endpoint = 127.0.0.1:51820
         '';
+      in {
+        "wireguard/wg0.conf".text = config;
+        "wireguard/wireguardconfiguration.txt".text = config;
       };
     };
     basicNetns = {
@@ -27,7 +30,8 @@
           "10.0.0.0/8"
           "127.0.0.1"
         ];
-        wireguardConfigFile = "/etc/wireguard/wg0.conf";
+        # Test unconventional name for config file
+        wireguardConfigFile = "/etc/wireguard/wireguardconfiguration.txt";
         portMappings = [
           { from = 9091; to = 9091; }
         ];
@@ -55,6 +59,12 @@
       vpnnamespaces.vpn-nam = {
         enable = true;
         wireguardConfigFile = "/etc/wireguard/wg0.conf";
+      };
+    };
+    machine_arbitrary_config_name = { pkgs, ... }: base // {
+      vpnnamespaces.vpn-nam = {
+        enable = true;
+        wireguardConfigFile = "/etc/wireguard/wireguardconfiguration.txt";
       };
     };
   };
