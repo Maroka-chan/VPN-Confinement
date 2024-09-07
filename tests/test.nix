@@ -67,6 +67,20 @@
         wireguardConfigFile = "/etc/wireguard/wireguardconfiguration.txt";
       };
     };
+    machine_resolved = { pkgs, ... }: base // basicNetns // {
+      # services.resolved changes services.resolvconf.package
+      # resulting in the resolvconf directory not being created.
+      # Making the directory inaccessible fails if it does not exist,
+      # so this test makes sure it does not fail when using resolved.
+
+      services.resolved.enable = true;
+      services.prowlarr.enable = true;
+
+      systemd.services.prowlarr = {
+        vpnconfinement.enable = true;
+        vpnconfinement.vpnnamespace = "wg";
+      };
+    };
   };
 
   testScript = ''
@@ -95,5 +109,12 @@
     machine_dash_in_name.succeed('[ $(cat /sys/class/net/vpn-nam-br/operstate) == "up" ]')
     machine_dash_in_name.succeed('[ $(cat /sys/class/net/veth-vpn-nam-br/operstate) == "up" ]')
     machine_dash_in_name.succeed('[ $(ip netns exec vpn-nam cat /sys/class/net/veth-vpn-nam/operstate) == "up" ]')
+
+    machine_resolved.wait_for_unit("wg.service")
+    machine_resolved.wait_for_unit("prowlarr.service")
+
+    machine_resolved.succeed('[ $(cat /sys/class/net/wg-br/operstate) == "up" ]')
+    machine_resolved.succeed('[ $(cat /sys/class/net/veth-wg-br/operstate) == "up" ]')
+    machine_resolved.succeed('[ $(ip netns exec wg cat /sys/class/net/veth-wg/operstate) == "up" ]')
   '';
 }
