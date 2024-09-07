@@ -146,9 +146,10 @@ in {
 
   options.vpnnamespaces = mkOption {
     type = with types; attrsOf (submodule [ (import ./options.nix) ]);
+    default = {};
   };
 
-  config = {
+  config = mkIf (config.vpnnamespaces != {}) {
     boot.kernel.sysctl."net.ipv4.ip_forward" = 1;
     systemd.services = mapAttrs' (n: v: nameValuePair n (namespaceToService n v)) config.vpnnamespaces;
     systemd.tmpfiles.rules = [ "d /var/run/resolvconf 0755 root root" ]; # Make sure resolvconf path exists

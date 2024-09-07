@@ -81,6 +81,10 @@
         vpnconfinement.vpnnamespace = "wg";
       };
     };
+    machine_no_namespaces = { pkgs, ... }: base // {
+      # Tests that the module does not fail even when
+      # no vpnnamespaces are defined.
+    };
   };
 
   testScript = ''
