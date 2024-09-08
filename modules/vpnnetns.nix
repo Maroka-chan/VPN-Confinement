@@ -14,6 +14,18 @@ let
         text = ''
           ip netns add ${name}
 
+          # Set up firewall
+          ip netns exec ${name} iptables -P INPUT DROP
+          ip netns exec ${name} iptables -P FORWARD DROP
+          ip netns exec ${name} iptables -A INPUT -i lo -j ACCEPT
+          ip netns exec ${name} iptables -A INPUT -m conntrack --ctstate INVALID -j DROP
+          ip netns exec ${name} iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+          # Drop packets to unspecified DNS
+          ip netns exec ${name} iptables -N dns-fw
+          ip netns exec ${name} iptables -A dns-fw -j DROP
+          ip netns exec ${name} iptables -I OUTPUT -p udp -m udp --dport 53 -j dns-fw
+
           # Set up the wireguard interface
           ip link add ${name}0 type wireguard
           ip link set ${name}0 netns ${name}
@@ -27,6 +39,17 @@ let
           # shellcheck disable=SC2154
           for addr in $Address; do
             ip -n ${name} address add "$addr" dev ${name}0
+          done
+
+          # Add DNS
+          rm -rf /etc/netns/${name}
+          mkdir -p /etc/netns/${name}
+          IFS=","
+          # shellcheck disable=SC2154
+          for ns in $DNS; do
+            if [[ $ns == *":"* ]]; then continue; fi  # Skip ipv6
+            echo "nameserver $ns" >> /etc/netns/${name}/resolv.conf
+            ip netns exec ${name} iptables -I dns-fw -p udp -d "$ns" -j ACCEPT
           done
 
           # Strips the config of wg-quick settings
@@ -72,29 +95,6 @@ let
 
           ip -n ${name} addr add ${def.namespaceAddress}/24 dev veth-${name}
           ip -n ${name} link set dev veth-${name} up
-
-          # Set up firewall
-          ip netns exec ${name} iptables -P INPUT DROP
-          ip netns exec ${name} iptables -P FORWARD DROP
-          ip netns exec ${name} iptables -A INPUT -i lo -j ACCEPT
-          ip netns exec ${name} iptables -A INPUT -m conntrack --ctstate INVALID -j DROP
-          ip netns exec ${name} iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-
-          # Drop packets to unspecified DNS
-          ip netns exec ${name} iptables -N dns-fw
-          ip netns exec ${name} iptables -A dns-fw -j DROP
-          ip netns exec ${name} iptables -I OUTPUT -p udp -m udp --dport 53 -j dns-fw
-
-          # Add DNS
-          rm -rf /etc/netns/${name}
-          mkdir -p /etc/netns/${name}
-          IFS=","
-          # shellcheck disable=SC2154
-          for ns in $DNS; do
-            if [[ $ns == *":"* ]]; then continue; fi  # Skip ipv6
-            echo "nameserver $ns" >> /etc/netns/${name}/resolv.conf
-            ip netns exec ${name} iptables -I dns-fw -p udp -d "$ns" -j ACCEPT
-          done
 
           # Add routes to make the namespace accessible
           ${strings.concatMapStrings (x: "ip -n ${name} route add ${x} via ${def.bridgeAddress}" + "\n") def.accessibleFrom}
