@@ -9,18 +9,18 @@ A NixOS module which lets you route traffic from systemd services through a VPN 
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    vpnConfinement.url = "github:Maroka-chan/VPN-Confinement";
-    vpnConfinement.inputs.nixpkgs.follows = "nixpkgs";
+    vpn-confinement.url = "github:Maroka-chan/VPN-Confinement";
+    vpn-confinement.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs, vpnConfinement, ... }:
+  outputs = { self, nixpkgs, vpn-confinement, ... }:
   {
     # Change hostname, system, etc. as needed.
     nixosConfigurations.hostname = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
         ./configuration.nix
-        vpnConfinement.nixosModules.default
+        vpn-confinement.nixosModules.default
       ];
     };
   };
