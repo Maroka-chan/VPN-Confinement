@@ -4,13 +4,14 @@ let
   firewallUtils = import ./firewall-utils.nix { inherit lib; };
   namespaceToService = name: def: assert builtins.stringLength name < 8; {
     description = "${name} network interface";
-    before = [ "network-pre.target" ];
+    after = [ "network-online.target" ];
+    wants = [ "network-online.target" ];
     wantedBy = [ "multi-user.target" ];
 
     serviceConfig = let
       vpnUp = pkgs.writeShellApplication {
         name = "${name}-up";
-        runtimeInputs = with pkgs; [ iproute2 wireguard-tools iptables bash ];
+        runtimeInputs = with pkgs; [ iproute2 wireguard-tools iptables bash unixtools.ping ];
         text = ''
           ip netns add ${name}
 
@@ -72,6 +73,8 @@ let
             done < "$CONFIG_FILE"
             echo "$WG_CONFIG"
           }
+
+          until ping -c1 1dot1dot1dot1.cloudflare-dns.com > /dev/null 2>&1; do sleep 1; done;
 
           # Set wireguard config
           ip netns exec ${name} \

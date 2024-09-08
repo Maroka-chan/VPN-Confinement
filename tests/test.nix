@@ -1,9 +1,11 @@
 {
-  name = "VPN-Confinement Test";
+  name = "VPN-Confinement Tests";
 
   nodes = let
     base = {
-      imports = [ (import ../modules/vpnnetns.nix) ];
+      # The test VM's do not have access to the internet.
+      # Make ping succeed by mapping cloudflare domain to localhost
+      networking.hosts = { "127.0.0.1" = [ "1dot1dot1dot1.cloudflare-dns.com" ]; };
 
       environment.etc = let
         config = ''
@@ -22,6 +24,7 @@
         "wireguard/wireguardconfiguration.txt".text = config;
       };
     };
+
     basicNetns = {
       vpnNamespaces.wg = {
         enable = true;
@@ -41,33 +44,43 @@
         }];
       };
     };
+
+    createNode = config: { pkgs, lib, ... }: {
+      imports = [ (import ../modules/vpnnetns.nix) ];
+      config = lib.mkMerge (config ++ [ base ]);
+    };
   in {
-    machine_dhcp = { pkgs, ... }: base // basicNetns;
-    machine_networkd = { pkgs, ... }: base // basicNetns // {
+    machine_dhcp = createNode [ basicNetns ];
+
+    machine_networkd = createNode [ basicNetns {
       networking.useNetworkd = true;
       systemd.network.enable = true;
       networking.useDHCP = false;
       networking.dhcpcd.enable = false;
-    };
-    machine_max_name_length = { pkgs, ... }: base // {
+    }];
+
+    machine_max_name_length = createNode [{
       vpnNamespaces.vpnname = {
         enable = true;
         wireguardConfigFile = "/etc/wireguard/wg0.conf";
       };
-    };
-    machine_dash_in_name = { pkgs, ... }: base // {
+    }];
+
+    machine_dash_in_name = createNode [{
       vpnNamespaces.vpn-nam = {
         enable = true;
         wireguardConfigFile = "/etc/wireguard/wg0.conf";
       };
-    };
-    machine_arbitrary_config_name = { pkgs, ... }: base // {
+    }];
+
+    machine_arbitrary_config_name = createNode [{
       vpnNamespaces.vpn-nam = {
         enable = true;
         wireguardConfigFile = "/etc/wireguard/wireguardconfiguration.txt";
       };
-    };
-    machine_resolved = { pkgs, ... }: base // basicNetns // {
+    }];
+
+    machine_resolved = createNode [ basicNetns {
       # services.resolved changes services.resolvconf.package
       # resulting in the resolvconf directory not being created.
       # Making the directory inaccessible fails if it does not exist,
@@ -80,11 +93,12 @@
         vpnConfinement.enable = true;
         vpnConfinement.vpnNamespace = "wg";
       };
-    };
-    machine_no_namespaces = { pkgs, ... }: base // {
+    }];
+
+    machine_no_namespaces = createNode [{
       # Tests that the module does not fail even when
       # no vpnnamespaces are defined.
-    };
+    }];
   };
 
   testScript = ''
