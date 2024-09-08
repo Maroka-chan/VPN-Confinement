@@ -142,16 +142,17 @@ let
     };
   };
 in {
-  imports = [ ./systemd.nix ]; # Confinement options for systemd services
+  imports = [ ./systemd.nix ] # Confinement options for systemd services
+    ++ [(mkRenamedOptionModule [ "vpnnamespaces" ] [ "vpnNamespaces" ])];
 
-  options.vpnnamespaces = mkOption {
+  options.vpnNamespaces = mkOption {
     type = with types; attrsOf (submodule [ (import ./options.nix) ]);
     default = {};
   };
 
-  config = mkIf (config.vpnnamespaces != {}) {
+  config = mkIf (config.vpnNamespaces != {}) {
     boot.kernel.sysctl."net.ipv4.ip_forward" = 1;
-    systemd.services = mapAttrs' (n: v: nameValuePair n (namespaceToService n v)) config.vpnnamespaces;
+    systemd.services = mapAttrs' (n: v: nameValuePair n (namespaceToService n v)) config.vpnNamespaces;
     systemd.tmpfiles.rules = [ "d /var/run/resolvconf 0755 root root" ]; # Make sure resolvconf path exists
   };
 }

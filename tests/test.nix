@@ -23,7 +23,7 @@
       };
     };
     basicNetns = {
-      vpnnamespaces.wg = {
+      vpnNamespaces.wg = {
         enable = true;
         accessibleFrom = [
           "192.168.0.0/24"
@@ -50,19 +50,19 @@
       networking.dhcpcd.enable = false;
     };
     machine_max_name_length = { pkgs, ... }: base // {
-      vpnnamespaces.vpnname = {
+      vpnNamespaces.vpnname = {
         enable = true;
         wireguardConfigFile = "/etc/wireguard/wg0.conf";
       };
     };
     machine_dash_in_name = { pkgs, ... }: base // {
-      vpnnamespaces.vpn-nam = {
+      vpnNamespaces.vpn-nam = {
         enable = true;
         wireguardConfigFile = "/etc/wireguard/wg0.conf";
       };
     };
     machine_arbitrary_config_name = { pkgs, ... }: base // {
-      vpnnamespaces.vpn-nam = {
+      vpnNamespaces.vpn-nam = {
         enable = true;
         wireguardConfigFile = "/etc/wireguard/wireguardconfiguration.txt";
       };
@@ -77,8 +77,8 @@
       services.prowlarr.enable = true;
 
       systemd.services.prowlarr = {
-        vpnconfinement.enable = true;
-        vpnconfinement.vpnnamespace = "wg";
+        vpnConfinement.enable = true;
+        vpnConfinement.vpnNamespace = "wg";
       };
     };
     machine_no_namespaces = { pkgs, ... }: base // {

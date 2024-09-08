@@ -3,7 +3,7 @@ with lib;
 {
   options.systemd.services = mkOption {
     type = types.attrsOf (types.submodule ({ name, config, ... }: {
-      options.vpnconfinement = {
+      options.vpnConfinement = {
         enable = mkOption {
           type = types.bool;
           default = false;
@@ -13,7 +13,7 @@ with lib;
             VPN tunnel and forces a specified DNS.
           '';
         };
-        vpnnamespace = mkOption {
+        vpnNamespace = mkOption {
           type = types.str;
           default = null;
           example = "wg";
@@ -24,9 +24,14 @@ with lib;
         };
       };
 
+      imports = [
+        (mkRenamedOptionModule [ "vpnconfinement" "enable" ] [ "vpnConfinement" "enable" ])
+        (mkRenamedOptionModule [ "vpnconfinement" "vpnnamespace" ] [ "vpnConfinement" "vpnNamespace" ])
+      ];
+
       config = let
-        vpn = config.vpnconfinement.vpnnamespace;
-      in mkIf config.vpnconfinement.enable {
+        vpn = config.vpnConfinement.vpnNamespace;
+      in mkIf config.vpnConfinement.enable {
         bindsTo = [ "${vpn}.service" ];
         after = [ "${vpn}.service" ];
 

@@ -9,18 +9,18 @@ A NixOS module which lets you route traffic from systemd services through a VPN 
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    vpnconfinement.url = "github:Maroka-chan/VPN-Confinement";
-    vpnconfinement.inputs.nixpkgs.follows = "nixpkgs";
+    vpnConfinement.url = "github:Maroka-chan/VPN-Confinement";
+    vpnConfinement.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs, vpnconfinement, ... }:
+  outputs = { self, nixpkgs, vpnConfinement, ... }:
   {
     # Change hostname, system, etc. as needed.
     nixosConfigurations.hostname = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
         ./configuration.nix
-        vpnconfinement.nixosModules.default
+        vpnConfinement.nixosModules.default
       ];
     };
   };
@@ -33,7 +33,7 @@ A NixOS module which lets you route traffic from systemd services through a VPN 
 ## Define VPN network namespace
 
 ```nix
-vpnnamespaces.<name> = { # The name is limited to 7 characters
+vpnNamespaces.<name> = { # The name is limited to 7 characters
   enable = true;
   wireguardConfigFile = <path to secret wireguard config file>;
   accessibleFrom = [
@@ -54,9 +54,9 @@ vpnnamespaces.<name> = { # The name is limited to 7 characters
 ## Add systemd service to VPN network namespace
 
 ```nix
-systemd.services.<name>.vpnconfinement = {
+systemd.services.<name>.vpnConfinement = {
   enable = true;
-  vpnnamespace = "<network namespace name>";
+  vpnNamespace = "<network namespace name>";
 };
 ```
 
@@ -67,7 +67,7 @@ systemd.services.<name>.vpnconfinement = {
 { pkgs, lib, config, ... }:
 {
   # Define VPN network namespace
-  vpnnamespaces.wg = {
+  vpnNamespaces.wg = {
     enable = true;
     wireguardConfigFile = /. + "/secrets/wg0.conf";
     accessibleFrom = [
@@ -83,9 +83,9 @@ systemd.services.<name>.vpnconfinement = {
   };
 
   # Add systemd service to VPN network namespace.
-  systemd.services.transmission.vpnconfinement = {
+  systemd.services.transmission.vpnConfinement = {
     enable = true;
-    vpnnamespace = "wg";
+    vpnNamespace = "wg";
   };
 
   services.transmission = {
