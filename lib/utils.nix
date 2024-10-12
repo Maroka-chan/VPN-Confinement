@@ -1,7 +1,8 @@
-{ lib, ... }:
-with lib;
-with builtins;
-rec {
+{ lib }:
+let
+  inherit (lib) splitString tryEval toInt count concatStrings sublist;
+  inherit (builtins) length elemAt all match;
+in rec {
   isValidIPv4 = ip:
   let
     maskSplit = splitString "/" ip;
