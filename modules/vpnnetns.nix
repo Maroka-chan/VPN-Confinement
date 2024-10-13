@@ -1,7 +1,10 @@
 { lib, pkgs, config, ... }:
 with lib;
 let
+  addNetNSRules = netns: argset: concatStringsSep "\n"
+    (map (args: "ip netns exec ${netns} iptables ${args}\nip netns exec ${netns} ip6tables ${args}") argset);
   firewallUtils = import ./firewall-utils.nix { inherit lib; };
+  utils = import ../lib/utils.nix { inherit lib; };
   namespaceToService = name: def: assert builtins.stringLength name < 8; {
     description = "${name} network interface";
     after = [ "network-online.target" ];
@@ -15,17 +18,23 @@ let
         text = ''
           ip netns add ${name}
 
-          # Set up firewall
-          ip netns exec ${name} iptables -P INPUT DROP
-          ip netns exec ${name} iptables -P FORWARD DROP
-          ip netns exec ${name} iptables -A INPUT -i lo -j ACCEPT
-          ip netns exec ${name} iptables -A INPUT -m conntrack --ctstate INVALID -j DROP
-          ip netns exec ${name} iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+          # Set up netns firewall
+          ${addNetNSRules name [
+            "-P INPUT DROP"
+            "-P FORWARD DROP"
+            "-A INPUT -i lo -j ACCEPT"
+            "-A INPUT -m conntrack --ctstate INVALID -j DROP"
+            "-A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT"
+          ]}
+
+          ip netns exec ${name} ip6tables -A INPUT -p ipv6-icmp -j ACCEPT
 
           # Drop packets to unspecified DNS
-          ip netns exec ${name} iptables -N dns-fw
-          ip netns exec ${name} iptables -A dns-fw -j DROP
-          ip netns exec ${name} iptables -I OUTPUT -p udp -m udp --dport 53 -j dns-fw
+          ${addNetNSRules name [
+            "-N dns-fw"
+            "-A dns-fw -j DROP"
+            "-I OUTPUT -p udp -m udp --dport 53 -j dns-fw"
+          ]}
 
           # Set up the wireguard interface
           ip link add ${name}0 type wireguard
@@ -48,9 +57,12 @@ let
           IFS=","
           # shellcheck disable=SC2154
           for ns in $DNS; do
-            if [[ $ns == *":"* ]]; then continue; fi  # Skip ipv6
             echo "nameserver $ns" >> /etc/netns/${name}/resolv.conf
-            ip netns exec ${name} iptables -I dns-fw -p udp -d "$ns" -j ACCEPT
+            if [[ $ns == *"."* ]]; then
+              ip netns exec ${name} iptables -I dns-fw -p udp -d "$ns" -j ACCEPT
+            else
+              ip netns exec ${name} ip6tables -I dns-fw -p udp -d "$ns" -j ACCEPT
+            fi
           done
 
           # Strips the config of wg-quick settings
@@ -82,6 +94,7 @@ let
 
           ip -n ${name} link set ${name}0 up
           ip -n ${name} route add default dev ${name}0
+          ip -6 -n ${name} route add default dev ${name}0
 
           # Start the loopback interface
           ip -n ${name} link set dev lo up
@@ -89,6 +102,7 @@ let
           # Create a bridge
           ip link add ${name}-br type bridge
           ip addr add ${def.bridgeAddress}/24 dev ${name}-br
+          ip addr add ${def.bridgeAddressIPv6}/64 dev ${name}-br
           ip link set dev ${name}-br up
 
           # Set up veth pair to link namespace with host network
@@ -97,21 +111,28 @@ let
           ip link set dev veth-${name}-br up
 
           ip -n ${name} addr add ${def.namespaceAddress}/24 dev veth-${name}
+          ip -n ${name} addr add ${def.namespaceAddressIPv6}/64 dev veth-${name}
           ip -n ${name} link set dev veth-${name} up
 
           # Add routes to make the namespace accessible
-          ${strings.concatMapStrings (x: "ip -n ${name} route add ${x} via ${def.bridgeAddress}" + "\n") def.accessibleFrom}
+          ${strings.concatMapStrings (x: ''
+            ip -n ${name} route add ${x} via \
+            ${if utils.isValidIPv4 x then def.bridgeAddress else def.bridgeAddressIPv6}
+          ''
+          ) def.accessibleFrom}
 
           # Add prerouting rules
           iptables -t nat -N ${name}-prerouting
           iptables -t nat -A PREROUTING -j ${name}-prerouting
-          ${firewallUtils.generatePreroutingRules "${name}-prerouting" def.namespaceAddress def.portMappings}
+          ip6tables -t nat -N ${name}-prerouting
+          ip6tables -t nat -A PREROUTING -j ${name}-prerouting
+          ${firewallUtils.generatePreroutingRules "${name}-prerouting" def.namespaceAddress def.namespaceAddressIPv6 def.portMappings}
 
           # Add veth INPUT rules
-          ${firewallUtils.generateNetNSInputRules name "veth-${name}" def.portMappings}
+          ${firewallUtils.generatePortMapRules name "veth-${name}" def.portMappings}
 
           # Add VPN INPUT rules
-          ${firewallUtils.generateNetNSVPNInputRules name "${name}0" def.openVPNPorts}
+          ${firewallUtils.generateAllowedPortRules name "${name}0" def.openVPNPorts}
         '';
       };
 
@@ -132,8 +153,14 @@ let
             # shellcheck disable=SC2086
             iptables -t nat -D ''${rule#* }
           done < <(iptables -t nat -S | awk '/${name}-prerouting/ && !/-N/')
+          while read -r rule
+          do
+            # shellcheck disable=SC2086
+            ip6tables -t nat -D ''${rule#* }
+          done < <(ip6tables -t nat -S | awk '/${name}-prerouting/ && !/-N/')
 
           iptables -t nat -X ${name}-prerouting
+          ip6tables -t nat -X ${name}-prerouting
         '';
       };
     in {
@@ -155,6 +182,7 @@ in {
 
   config = mkIf (config.vpnNamespaces != {}) {
     boot.kernel.sysctl."net.ipv4.ip_forward" = 1;
+    boot.kernel.sysctl."net.ipv6.conf.all.forwarding" = 1;
     systemd.services = mapAttrs' (n: v: nameValuePair n (namespaceToService n v)) config.vpnNamespaces;
     systemd.tmpfiles.rules = [ "d /var/run/resolvconf 0755 root root" ]; # Make sure resolvconf path exists
   };

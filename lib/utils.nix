@@ -1,7 +1,7 @@
 { lib }:
 let
-  inherit (lib) splitString tryEval toInt count concatStrings sublist;
-  inherit (builtins) length elemAt all match;
+  inherit (lib) splitString toInt count concatStrings sublist;
+  inherit (builtins) length elemAt all match tryEval;
 in rec {
   isValidIPv4 = ip:
   let
