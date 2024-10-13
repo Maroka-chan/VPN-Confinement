@@ -14,7 +14,7 @@
 
       flake = {
         nixosModules = rec {
-          vpnConfinement = ./modules/vpnnetns.nix;
+          vpnConfinement = ./modules/vpn-netns.nix;
           default = vpnConfinement;
         };
       };
