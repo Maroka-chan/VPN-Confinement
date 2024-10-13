@@ -5,7 +5,9 @@
     base = {
       # The test VM's do not have access to the internet.
       # Make ping succeed by mapping cloudflare domain to localhost
-      networking.hosts = { "127.0.0.1" = [ "1dot1dot1dot1.cloudflare-dns.com" ]; };
+      networking.hosts = {
+        "127.0.0.1" = [ "1dot1dot1dot1.cloudflare-dns.com" ];
+      };
 
       environment.etc = let
         config = ''
@@ -32,6 +34,8 @@
           "192.168.0.0/24"
           "10.0.0.0/8"
           "127.0.0.1"
+          "fd25:9ab6:6133::/64"
+          "::"
         ];
         # Test unconventional name for config file
         wireguardConfigFile = "/etc/wireguard/wireguardconfiguration.txt";
@@ -46,7 +50,7 @@
     };
 
     createNode = config: { pkgs, lib, ... }: {
-      imports = [ (import ../modules/vpnnetns.nix) ];
+      imports = [ (import ../modules/vpn-netns.nix) ];
       config = lib.mkMerge (config ++ [ base ]);
     };
   in {
@@ -107,32 +111,48 @@
     machine_dhcp.wait_for_unit("wg.service")
 
     machine_dhcp.succeed('[ $(cat /sys/class/net/wg-br/operstate) == "up" ]')
-    machine_dhcp.succeed('[ $(cat /sys/class/net/veth-wg-br/operstate) == "up" ]')
-    machine_dhcp.succeed('[ $(ip netns exec wg cat /sys/class/net/veth-wg/operstate) == "up" ]')
+    machine_dhcp.succeed(
+      '[ $(cat /sys/class/net/veth-wg-br/operstate) == "up" ]')
+    machine_dhcp.succeed(
+      '[ $(ip netns exec wg cat /sys/class/net/veth-wg/operstate) == "up" ]')
 
     machine_networkd.wait_for_unit("wg.service")
 
-    machine_networkd.succeed('[ $(cat /sys/class/net/wg-br/operstate) == "up" ]')
-    machine_networkd.succeed('[ $(cat /sys/class/net/veth-wg-br/operstate) == "up" ]')
-    machine_networkd.succeed('[ $(ip netns exec wg cat /sys/class/net/veth-wg/operstate) == "up" ]')
+    machine_networkd.succeed(
+      '[ $(cat /sys/class/net/wg-br/operstate) == "up" ]')
+    machine_networkd.succeed(
+      '[ $(cat /sys/class/net/veth-wg-br/operstate) == "up" ]')
+    machine_networkd.succeed(
+      '[ $(ip netns exec wg cat /sys/class/net/veth-wg/operstate) == "up" ]')
 
     machine_max_name_length.wait_for_unit("vpnname.service")
 
-    machine_max_name_length.succeed('[ $(cat /sys/class/net/vpnname-br/operstate) == "up" ]')
-    machine_max_name_length.succeed('[ $(cat /sys/class/net/veth-vpnname-br/operstate) == "up" ]')
-    machine_max_name_length.succeed('[ $(ip netns exec vpnname cat /sys/class/net/veth-vpnname/operstate) == "up" ]')
+    machine_max_name_length.succeed(
+      '[ $(cat /sys/class/net/vpnname-br/operstate) == "up" ]')
+    machine_max_name_length.succeed(
+      '[ $(cat /sys/class/net/veth-vpnname-br/operstate) == "up" ]')
+    machine_max_name_length.succeed(
+      '[ $(ip netns exec vpnname \
+        cat /sys/class/net/veth-vpnname/operstate) == "up" ]')
 
     machine_dash_in_name.wait_for_unit("vpn-nam.service")
 
-    machine_dash_in_name.succeed('[ $(cat /sys/class/net/vpn-nam-br/operstate) == "up" ]')
-    machine_dash_in_name.succeed('[ $(cat /sys/class/net/veth-vpn-nam-br/operstate) == "up" ]')
-    machine_dash_in_name.succeed('[ $(ip netns exec vpn-nam cat /sys/class/net/veth-vpn-nam/operstate) == "up" ]')
+    machine_dash_in_name.succeed(
+      '[ $(cat /sys/class/net/vpn-nam-br/operstate) == "up" ]')
+    machine_dash_in_name.succeed(
+      '[ $(cat /sys/class/net/veth-vpn-nam-br/operstate) == "up" ]')
+    machine_dash_in_name.succeed(
+      '[ $(ip netns exec vpn-nam \
+        cat /sys/class/net/veth-vpn-nam/operstate) == "up" ]')
 
     machine_resolved.wait_for_unit("wg.service")
     machine_resolved.wait_for_unit("prowlarr.service")
 
-    machine_resolved.succeed('[ $(cat /sys/class/net/wg-br/operstate) == "up" ]')
-    machine_resolved.succeed('[ $(cat /sys/class/net/veth-wg-br/operstate) == "up" ]')
-    machine_resolved.succeed('[ $(ip netns exec wg cat /sys/class/net/veth-wg/operstate) == "up" ]')
+    machine_resolved.succeed(
+      '[ $(cat /sys/class/net/wg-br/operstate) == "up" ]')
+    machine_resolved.succeed(
+      '[ $(cat /sys/class/net/veth-wg-br/operstate) == "up" ]')
+    machine_resolved.succeed(
+      '[ $(ip netns exec wg cat /sys/class/net/veth-wg/operstate) == "up" ]')
   '';
 }

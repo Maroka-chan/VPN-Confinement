@@ -89,7 +89,7 @@ in {
             default = "tcp";
             example = "both";
             type = enum [ "tcp" "udp" "both" ];
-            description = "The transport layer protocol to open the ports for.";
+            description = "The transport layer protocol to use.";
           };
         };
       });
@@ -116,7 +116,7 @@ in {
             default = "tcp";
             example = "both";
             type = enum [ "tcp" "udp" "both" ];
-            description = "The transport layer protocol to open the ports for.";
+            description = "The transport layer protocol to use.";
           };
         };
       });
