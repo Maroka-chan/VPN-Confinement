@@ -1,8 +1,8 @@
 { lib, ... }:
 let
-  inherit (import ../lib/types.nix { inherit lib; }) ipAddress;
+  inherit (import ../lib/types.nix { inherit lib; }) ipAddress ipv4 ipv6;
   inherit (lib) mkEnableOption mkOption;
-  inherit (lib.types) listOf str submodule path port enum;
+  inherit (lib.types) listOf submodule path port enum;
 in {
   options = {
     enable = mkEnableOption ("vpn netns") // {
@@ -18,7 +18,7 @@ in {
     };
 
     accessibleFrom = mkOption {
-      type = listOf str;
+      type = listOf ipAddress;
       default = [];
       description = ''
         Subnets, ranges, and specific addresses that the
@@ -33,7 +33,7 @@ in {
     };
 
     namespaceAddress = mkOption {
-      type = str;
+      type = ipv4;
       default = "192.168.15.1";
       description = ''
         The address of the veth interface connected to the vpn namespace.
@@ -44,7 +44,7 @@ in {
     };
 
     namespaceAddressIPv6 = mkOption {
-      type = str;
+      type = ipv6;
       default = "fd93:9701:1d00::2";
       description = ''
         The address of the veth interface connected to the vpn namespace.
@@ -55,7 +55,7 @@ in {
     };
 
     bridgeAddress = mkOption {
-      type = str;
+      type = ipv4;
       default = "192.168.15.5";
       description = ''
         The address of the linux bridge on the default namespace.
@@ -67,7 +67,7 @@ in {
     };
 
     bridgeAddressIPv6 = mkOption {
-      type = str;
+      type = ipv6;
       default = "fd93:9701:1d00::1";
       description = ''
         The address of the linux bridge on the default namespace.

@@ -22,7 +22,7 @@ in {
   ipAddress = mkOptionType {
     name = "ipAddress";
     description = "valid ipv4 or ipv6 address with optional mask";
-    check = isValidIPv4 || isValidIPv6;
+    check = ip: (isValidIPv4 ip || isValidIPv6 ip);
     merge = mergeEqualOption;
   };
 }
