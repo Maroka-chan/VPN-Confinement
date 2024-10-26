@@ -1,4 +1,4 @@
-{ lib }:
+{ lib, optionalIPv6String }:
 let
   inherit (lib) concatMapStrings;
   inherit (builtins) foldl' toString concatStringsSep;
@@ -12,7 +12,7 @@ in rec {
         --dport ${toString portMap.from} \
         -j DNAT --to-destination \
         ${namespaceAddress}:${toString portMap.to}
-
+      '' + optionalIPv6String ''
         ip6tables -t nat -A ${table} -p ${protocol} \
         --dport ${toString portMap.from} \
         -j DNAT --to-destination \
@@ -56,12 +56,14 @@ in rec {
   addIPRules = netns: argset: concatStringsSep "\n"
     (map (args: ''
       iptables ${args}
+    '' + optionalIPv6String ''
       ip6tables ${args}
     '') argset);
 
   addNetNSIPRules = netns: argset: concatStringsSep "\n"
     (map (args: ''
       ip netns exec ${netns} iptables ${args}
+    '' + optionalIPv6String ''
       ip netns exec ${netns} ip6tables ${args}
     '') argset);
 }

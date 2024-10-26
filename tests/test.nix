@@ -103,6 +103,10 @@
       # Tests that the module does not fail even when
       # no vpnnamespaces are defined.
     }];
+
+    machine_ipv6_disabled = createNode [ basicNetns {
+      networking.enableIPv6 = false;
+    }];
   };
 
   testScript = ''
@@ -154,5 +158,7 @@
       '[ $(cat /sys/class/net/veth-wg-br/operstate) == "up" ]')
     machine_resolved.succeed(
       '[ $(ip netns exec wg cat /sys/class/net/veth-wg/operstate) == "up" ]')
+
+    machine_ipv6_disabled.wait_for_unit("wg.service")
   '';
 }
