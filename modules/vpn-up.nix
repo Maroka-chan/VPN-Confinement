@@ -54,7 +54,7 @@ in pkgs.writeShellApplication {
     # Parse wireguard INI config file
     # shellcheck disable=SC1090
     source <( \
-      grep -e "DNS" -e "Address" ${def.wireguardConfigFile} \
+      grep -e "DNS" -e "Address" -e "Endpoint" ${def.wireguardConfigFile} \
         | tr -d ' ' \
     )
 
@@ -106,8 +106,9 @@ in pkgs.writeShellApplication {
       echo "$WG_CONFIG"
     }
 
-    # Wait for internet to be reachable
-    until ping -c1 1dot1dot1dot1.cloudflare-dns.com > /dev/null 2>&1; do
+    # Wait for wireguard endpoint to be reachable
+    # shellcheck disable=SC2154
+    until ping -c1 "''${Endpoint%%:*}" > /dev/null 2>&1; do
       sleep 1
     done
 

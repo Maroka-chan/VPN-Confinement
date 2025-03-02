@@ -3,12 +3,6 @@
 
   nodes = let
     base = {
-      # The test VM's do not have access to the internet.
-      # Make ping succeed by mapping cloudflare domain to localhost
-      networking.hosts = {
-        "127.0.0.1" = [ "1dot1dot1dot1.cloudflare-dns.com" ];
-      };
-
       environment.etc = let
         config = ''
           [Interface]
