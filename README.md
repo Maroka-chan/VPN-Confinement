@@ -90,7 +90,8 @@ systemd.services.<name>.vpnConfinement = {
   services.transmission = {
     enable = true;
     settings = {
-      "rpc-bind-address" = "192.168.15.1"; # Bind RPC/WebUI to bridge address
+      "rpc-bind-address" = "192.168.15.1"; # Bind RPC to vpn namespace address
+      "rpc-whitelist" = "192.168.15.5"; # Allow WebUI access from bridge on the default namespace
     };
   };
 }
