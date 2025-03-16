@@ -1,5 +1,5 @@
 # VPN-Confinement
-A NixOS module which lets you route traffic from systemd services through a VPN while preventing DNS leaks.
+A NixOS module that lets you route traffic from systemd services through a VPN while preventing DNS leaks.
 
 # Installation
 
@@ -14,7 +14,7 @@ A NixOS module which lets you route traffic from systemd services through a VPN 
 
   outputs = { self, nixpkgs, vpn-confinement, ... }:
   {
-    # Change hostname, system, etc. as needed.
+    # Change hostname, system, etc. as needed
     nixosConfigurations.hostname = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
@@ -81,7 +81,7 @@ systemd.services.<name>.vpnConfinement = {
     }];
   };
 
-  # Add systemd service to VPN network namespace.
+  # Add systemd service to VPN network namespace
   systemd.services.transmission.vpnConfinement = {
     enable = true;
     vpnNamespace = "wg";
@@ -90,11 +90,18 @@ systemd.services.<name>.vpnConfinement = {
   services.transmission = {
     enable = true;
     settings = {
-      "rpc-bind-address" = "192.168.15.1"; # Bind RPC/WebUI to VPN namespace address
-      "rpc-whitelist" = "192.168.15.5"; # Allow RPC/WebUI access from bridge on the default namespace
+      "rpc-bind-address" = "192.168.15.1"; # Bind RPC/WebUI to VPN network namespace address
+
+      # RPC-whitelist examples
+      "rpc-whitelist" = "192.168.15.5"; # Access from default network namespace
+      "rpc-whitelist" = "192.168.1.*";  # Access from other machines on specific subnet
+      "rpc-whitelist" = "127.0.0.1";    # Access through loopback within VPN network namespace
     };
   };
 }
 ```
+
+> 💡 Access from the default network namespace is done using the VPN network namespace address.\
+> `curl 192.168.15.1:9091`
 
 See all options and their descriptions in the [module file](modules/options.nix).
