@@ -1,5 +1,15 @@
-# VPN-Confinement
-A NixOS module that lets you route traffic from systemd services through a VPN while preventing DNS leaks.
+
+
+<div align="center" id="user-content-toc">
+  <ul style="list-style: none;">
+    <summary>
+      <h1>⛓️ VPN-Confinement ⛓️</h1>
+      <p>A NixOS module that lets you route traffic from systemd services through a VPN while preventing DNS leaks.</p>
+    </summary>
+  </ul>
+</div>
+
+<br />
 
 # Installation
 
@@ -101,7 +111,8 @@ systemd.services.<name>.vpnConfinement = {
 }
 ```
 
-> 💡 Access from the default network namespace is done using the VPN network namespace address.\
+> [!NOTE]
+> Access from the default network namespace is done using the VPN network namespace address.\
 > `curl 192.168.15.1:9091`
 
 See all options and their descriptions in the [module file](modules/options.nix).
