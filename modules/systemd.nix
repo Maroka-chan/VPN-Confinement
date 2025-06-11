@@ -44,11 +44,11 @@ in {
         after = [ "${vpn}.service" ];
 
         serviceConfig = {
-          NetworkNamespacePath = "/var/run/netns/${vpn}";
+          NetworkNamespacePath = "/run/netns/${vpn}";
 
           InaccessiblePaths = [
-            "/var/run/nscd"
-            "/var/run/resolvconf"
+            "/run/nscd"
+            "/run/resolvconf"
           ];
 
           BindReadOnlyPaths = [
