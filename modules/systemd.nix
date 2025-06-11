@@ -48,6 +48,7 @@ in {
 
           InaccessiblePaths = [
             "/var/run/nscd"
+            "/run/nscd" 
             "/var/run/resolvconf"
           ];
 
