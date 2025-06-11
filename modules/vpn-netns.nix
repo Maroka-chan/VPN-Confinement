@@ -49,6 +49,6 @@ in {
     ) config.vpnNamespaces;
 
     # Make sure resolvconf path exists
-    systemd.tmpfiles.rules = [ "d /var/run/resolvconf 0755 root root" ];
+    systemd.tmpfiles.rules = [ "d /run/resolvconf 0755 root root" ];
   };
 }
