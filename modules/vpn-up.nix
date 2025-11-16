@@ -114,9 +114,14 @@ pkgs.writeShellApplication {
       echo "$WG_CONFIG"
     }
 
-    # Wait for wireguard endpoint to be reachable
+    # The wireguard endpoint is an IP address with a port. Extract the address alone, and test for
+    # connectivity using ping.
     # shellcheck disable=SC2154
-    until ping -c1 "''${Endpoint%%:*}" > /dev/null 2>&1; do
+    EndpointIP="''${Endpoint%:*}"  # Remove port
+    EndpointIP="''${EndpointIP#[}" # Remove leading bracket in case of an IPv6 address
+    EndpointIP="''${EndpointIP%]}" # Remove trailing bracket in case of an IPv6 address
+    echo "Waiting for wireguard endpoint $EndpointIP to be reachable..."
+    until ping -c1 "''$EndpointIP" > /dev/null 2>&1; do
       sleep 1
     done
 
