@@ -124,7 +124,7 @@ pkgs.writeShellApplication {
       exit 1
     fi
 
-    max_retries=5
+    max_retries=30
     success=false
     echo -n "Waiting for wireguard endpoint $EndpointIP to be reachable..."
     for _ in $(seq 1 $max_retries); do
