@@ -1,7 +1,7 @@
-{ pkgs
-, lib
-, optionalIPv6String
-,
+{
+  pkgs,
+  lib,
+  optionalIPv6String,
 }:
 netnsName: def:
 let
