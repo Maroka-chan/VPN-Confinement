@@ -11,6 +11,9 @@
 
 <br />
 
+> [!IMPORTANT]
+> To "prevent" DNS leaks, this module simply makes the NSCD socket inaccessible to a systemd service. This might cause other problems, and leaks have only been tested when resolving DNS over UDP. Other ways of resolving DNS like DoT and DoH have not been tested, and DNS can leak in other ways, so you are always advised to monitor and test for DNS leaks yourself.
+
 # Installation
 
 ## Nix Flake

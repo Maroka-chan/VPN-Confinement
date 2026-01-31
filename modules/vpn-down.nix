@@ -1,9 +1,17 @@
-{ pkgs, optionalIPv6String }: netnsName:
+{ pkgs, optionalIPv6String }:
+netnsName:
 pkgs.writeShellApplication {
   name = "${netnsName}-down";
-  runtimeInputs = with pkgs; [ iproute2 iptables gawk ];
+  runtimeInputs = with pkgs; [
+    iproute2
+    iptables
+    gawk
+  ];
   text = ''
     set +o errexit
+
+    # Silence errors
+    exec 2>/dev/null
 
     ip netns del ${netnsName}
     ip link del ${netnsName}-br
@@ -18,16 +26,16 @@ pkgs.writeShellApplication {
     done < <(iptables -t nat -S | awk '/${netnsName}-prerouting/ && !/-N/')
 
     ${optionalIPv6String ''
-    while read -r rule
-    do
-      # shellcheck disable=SC2086
-      ip6tables -t nat -D ''${rule#* }
-    done < <(ip6tables -t nat -S | awk '/${netnsName}-prerouting/ && !/-N/')
+      while read -r rule
+      do
+        # shellcheck disable=SC2086
+        ip6tables -t nat -D ''${rule#* }
+      done < <(ip6tables -t nat -S | awk '/${netnsName}-prerouting/ && !/-N/')
     ''}
 
     iptables -t nat -X ${netnsName}-prerouting
     ${optionalIPv6String ''
-    ip6tables -t nat -X ${netnsName}-prerouting
+      ip6tables -t nat -X ${netnsName}-prerouting
     ''}
   '';
 }

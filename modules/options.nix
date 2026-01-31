@@ -2,10 +2,17 @@
 let
   inherit (import ../lib/types.nix { inherit lib; }) ipAddress ipv4 ipv6;
   inherit (lib) mkEnableOption mkOption;
-  inherit (lib.types) listOf submodule path port enum;
-in {
+  inherit (lib.types)
+    listOf
+    submodule
+    path
+    port
+    enum
+    ;
+in
+{
   options = {
-    enable = mkEnableOption ("vpn netns") // {
+    enable = mkEnableOption "vpn netns" // {
       description = ''
         Whether to enable the VPN namespace.
 
@@ -19,7 +26,7 @@ in {
 
     accessibleFrom = mkOption {
       type = listOf ipAddress;
-      default = [];
+      default = [ ];
       description = ''
         Subnets, ranges, and specific addresses that the
         namespace should be accessible to.
@@ -88,12 +95,16 @@ in {
           protocol = mkOption {
             default = "tcp";
             example = "both";
-            type = enum [ "tcp" "udp" "both" ];
+            type = enum [
+              "tcp"
+              "udp"
+              "both"
+            ];
             description = "The transport layer protocol to use.";
           };
         };
       });
-      default = [];
+      default = [ ];
       description = ''
         Ports that should be accessible through the VPN interface.
       '';
@@ -115,12 +126,16 @@ in {
           protocol = mkOption {
             default = "tcp";
             example = "both";
-            type = enum [ "tcp" "udp" "both" ];
+            type = enum [
+              "tcp"
+              "udp"
+              "both"
+            ];
             description = "The transport layer protocol to use.";
           };
         };
       });
-      default = [];
+      default = [ ];
       description = ''
         A list of port mappings from
         the host to ports in the namespace.
@@ -130,11 +145,13 @@ in {
         The 'to' ports are automatically opened
         in the VPN netns.
       '';
-      example = [{
-        from = 80;
-        to = 80;
-        protocol = "tcp";
-      }];
+      example = [
+        {
+          from = 80;
+          to = 80;
+          protocol = "tcp";
+        }
+      ];
     };
 
     wireguardConfigFile = mkOption {

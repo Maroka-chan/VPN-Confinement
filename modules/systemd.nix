@@ -1,30 +1,39 @@
 { lib, ... }:
 let
   inherit (lib) mkOption mkRenamedOptionModule mkIf;
-  inherit (lib.types) attrsOf submodule bool str;
-in {
+  inherit (lib.types)
+    attrsOf
+    submodule
+    bool
+    str
+    ;
+in
+{
   options.systemd.services = mkOption {
-    type = attrsOf (submodule ({ name, config, ... }: {
-      options.vpnConfinement = {
-        enable = mkOption {
-          type = bool;
-          default = false;
-          description = ''
-            Whether to confine the systemd service in a
-            networking namespace which routes traffic through a
-            VPN tunnel and forces a specified DNS.
-          '';
-        };
-        vpnNamespace = mkOption {
-          type = str;
-          default = null;
-          example = "wg";
-          description = ''
-            Name of the VPN networking namespace to
-            use for the systemd service.
-          '';
-        };
-      };
+    type = attrsOf (
+      submodule (
+        { config, ... }:
+        {
+          options.vpnConfinement = {
+            enable = mkOption {
+              type = bool;
+              default = false;
+              description = ''
+                Whether to confine the systemd service in a
+                networking namespace which routes traffic through a
+                VPN tunnel and forces a specified DNS.
+              '';
+            };
+            vpnNamespace = mkOption {
+              type = str;
+              default = null;
+              example = "wg";
+              description = ''
+                Name of the VPN networking namespace to
+                use for the systemd service.
+              '';
+            };
+          };
 
       imports = [
         (mkRenamedOptionModule

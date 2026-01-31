@@ -5,11 +5,14 @@
     flake-parts.inputs.nixpkgs-lib.follows = "nixpkgs";
   };
 
-  outputs = inputs @ { nixpkgs, flake-parts, ... }:
+  outputs =
+    inputs@{ flake-parts, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [ "x86_64-linux" ];
-      perSystem = { pkgs, ... }: {
-        checks.interfaces = pkgs.testers.runNixOSTest ./test.nix;
-      };
+      perSystem =
+        { pkgs, ... }:
+        {
+          checks.interfaces = pkgs.testers.runNixOSTest ./test.nix;
+        };
     };
 }
