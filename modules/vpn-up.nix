@@ -89,6 +89,10 @@ in
         fi
       done
 
+      # Add nsswitch config
+      echo "hosts: files dns" > /etc/netns/${netnsName}/nsswitch.conf
+      echo "networks: files" >> /etc/netns/${netnsName}/nsswitch.conf
+
       # Strips the config of wg-quick settings
       shopt -s extglob
       strip_wgquick_config() {
