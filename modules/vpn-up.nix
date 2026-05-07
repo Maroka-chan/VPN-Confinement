@@ -145,6 +145,10 @@ in
         fi
       done
 
+      # Add nsswitch config
+      echo "hosts: files dns" > /etc/netns/${netnsName}/nsswitch.conf
+      echo "networks: files" >> /etc/netns/${netnsName}/nsswitch.conf
+
       # The wireguard endpoint is an IP address with a port. Extract the address alone, and test for
       # connectivity using ping.
       # shellcheck disable=SC2154

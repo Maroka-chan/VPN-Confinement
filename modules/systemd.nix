@@ -51,10 +51,12 @@ in {
                 InaccessiblePaths = [
                   "/run/nscd"
                   "/run/resolvconf"
+                  "/run/systemd/resolve"
                 ];
 
                 BindReadOnlyPaths = [
                   "/etc/netns/${vpn}/resolv.conf:/etc/resolv.conf:norbind"
+                  "/etc/netns/${vpn}/nsswitch.conf:/etc/nsswitch.conf:norbind"
                 ];
               };
             };
