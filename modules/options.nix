@@ -1,32 +1,33 @@
-{ lib, ... }:
-let
-  inherit (import ../lib/types.nix { inherit lib; }) ipAddress ipv4 ipv6;
+{lib, ...}: let
+  inherit (import ../lib/types.nix {inherit lib;}) ipAddress ipv4 ipv6;
   inherit (lib) mkEnableOption mkOption;
-  inherit (lib.types)
+  inherit
+    (lib.types)
     listOf
     submodule
     path
     port
     enum
     ;
-in
-{
+in {
   options = {
-    enable = mkEnableOption "vpn netns" // {
-      description = ''
-        Whether to enable the VPN namespace.
+    enable =
+      mkEnableOption "vpn netns"
+      // {
+        description = ''
+          Whether to enable the VPN namespace.
 
-        To access the networking namespace(netns) a veth pair
-        is created to connect it and the default namespace
-        through a linux bridge. One end of the pair is
-        connected to the linux bridge on the default netns.
-        The other end is connected to the vpn netns.
-      '';
-    };
+          To access the networking namespace(netns) a veth pair
+          is created to connect it and the default namespace
+          through a linux bridge. One end of the pair is
+          connected to the linux bridge on the default netns.
+          The other end is connected to the vpn netns.
+        '';
+      };
 
     accessibleFrom = mkOption {
       type = listOf ipAddress;
-      default = [ ];
+      default = [];
       description = ''
         Subnets, ranges, and specific addresses that the
         namespace should be accessible to.
@@ -104,7 +105,7 @@ in
           };
         };
       });
-      default = [ ];
+      default = [];
       description = ''
         Ports that should be accessible through the VPN interface.
       '';
@@ -135,7 +136,7 @@ in
           };
         };
       });
-      default = [ ];
+      default = [];
       description = ''
         A list of port mappings from
         the host to ports in the namespace.

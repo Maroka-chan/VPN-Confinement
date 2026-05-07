@@ -1,6 +1,5 @@
-{ lib, ... }:
-let
-  inherit (import ./utils.nix { inherit lib; }) isValidIPv4 isValidIPv6;
+{lib, ...}: let
+  inherit (import ./utils.nix {inherit lib;}) isValidIPv4 isValidIPv6;
   inherit (lib) mkOptionType mergeEqualOption;
 in {
   ipv4 = mkOptionType {

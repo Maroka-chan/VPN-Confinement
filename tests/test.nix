@@ -34,73 +34,99 @@
         # Test unconventional name for config file
         wireguardConfigFile = "/etc/wireguard/wireguardconfiguration.txt";
         portMappings = [
-          { from = 9091; to = 9091; }
+          {
+            from = 9091;
+            to = 9091;
+          }
         ];
-        openVPNPorts = [{
-          port = 60729;
-          protocol = "both";
-        }];
+        openVPNPorts = [
+          {
+            port = 60729;
+            protocol = "both";
+          }
+        ];
       };
     };
 
-    createNode = config: { pkgs, lib, ... }: {
-      imports = [ (import ../modules/vpn-netns.nix) ];
-      config = lib.mkMerge (config ++ [ base ]);
+    createNode = config: {
+      pkgs,
+      lib,
+      ...
+    }: {
+      imports = [(import ../modules/vpn-netns.nix)];
+      config = lib.mkMerge (config ++ [base]);
     };
   in {
-    machine_dhcp = createNode [ basicNetns ];
+    machine_dhcp = createNode [basicNetns];
 
-    machine_networkd = createNode [ basicNetns {
-      networking.useNetworkd = true;
-      systemd.network.enable = true;
-      networking.useDHCP = false;
-      networking.dhcpcd.enable = false;
-    }];
+    machine_networkd = createNode [
+      basicNetns
+      {
+        networking.useNetworkd = true;
+        systemd.network.enable = true;
+        networking.useDHCP = false;
+        networking.dhcpcd.enable = false;
+      }
+    ];
 
-    machine_max_name_length = createNode [{
-      vpnNamespaces.vpnname = {
-        enable = true;
-        wireguardConfigFile = "/etc/wireguard/wg0.conf";
-      };
-    }];
+    machine_max_name_length = createNode [
+      {
+        vpnNamespaces.vpnname = {
+          enable = true;
+          wireguardConfigFile = "/etc/wireguard/wg0.conf";
+        };
+      }
+    ];
 
-    machine_dash_in_name = createNode [{
-      vpnNamespaces.vpn-nam = {
-        enable = true;
-        wireguardConfigFile = "/etc/wireguard/wg0.conf";
-      };
-    }];
+    machine_dash_in_name = createNode [
+      {
+        vpnNamespaces.vpn-nam = {
+          enable = true;
+          wireguardConfigFile = "/etc/wireguard/wg0.conf";
+        };
+      }
+    ];
 
-    machine_arbitrary_config_name = createNode [{
-      vpnNamespaces.vpn-nam = {
-        enable = true;
-        wireguardConfigFile = "/etc/wireguard/wireguardconfiguration.txt";
-      };
-    }];
+    machine_arbitrary_config_name = createNode [
+      {
+        vpnNamespaces.vpn-nam = {
+          enable = true;
+          wireguardConfigFile = "/etc/wireguard/wireguardconfiguration.txt";
+        };
+      }
+    ];
 
-    machine_resolved = createNode [ basicNetns {
-      # services.resolved changes services.resolvconf.package
-      # resulting in the resolvconf directory not being created.
-      # Making the directory inaccessible fails if it does not exist,
-      # so this test makes sure it does not fail when using resolved.
+    machine_resolved = createNode [
+      basicNetns
+      {
+        # services.resolved changes services.resolvconf.package
+        # resulting in the resolvconf directory not being created.
+        # Making the directory inaccessible fails if it does not exist,
+        # so this test makes sure it does not fail when using resolved.
 
-      services.resolved.enable = true;
-      services.prowlarr.enable = true;
+        services.resolved.enable = true;
+        services.prowlarr.enable = true;
 
-      systemd.services.prowlarr = {
-        vpnConfinement.enable = true;
-        vpnConfinement.vpnNamespace = "wg";
-      };
-    }];
+        systemd.services.prowlarr = {
+          vpnConfinement.enable = true;
+          vpnConfinement.vpnNamespace = "wg";
+        };
+      }
+    ];
 
-    machine_no_namespaces = createNode [{
-      # Tests that the module does not fail even when
-      # no vpnnamespaces are defined.
-    }];
+    machine_no_namespaces = createNode [
+      {
+        # Tests that the module does not fail even when
+        # no vpnnamespaces are defined.
+      }
+    ];
 
-    machine_ipv6_disabled = createNode [ basicNetns {
-      networking.enableIPv6 = false;
-    }];
+    machine_ipv6_disabled = createNode [
+      basicNetns
+      {
+        networking.enableIPv6 = false;
+      }
+    ];
   };
 
   testScript = ''

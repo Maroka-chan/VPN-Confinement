@@ -1,19 +1,17 @@
-{ lib, ... }:
-let
+{lib, ...}: let
   inherit (lib) mkOption mkRenamedOptionModule mkIf;
-  inherit (lib.types)
+  inherit
+    (lib.types)
     attrsOf
     submodule
     bool
     str
     ;
-in
-{
+in {
   options.systemd.services = mkOption {
     type = attrsOf (
       submodule (
-        { config, ... }:
-        {
+        {config, ...}: {
           options.vpnConfinement = {
             enable = mkOption {
               type = bool;
@@ -36,17 +34,16 @@ in
           };
 
           imports = [
-            (mkRenamedOptionModule [ "vpnconfinement" "enable" ] [ "vpnConfinement" "enable" ])
-            (mkRenamedOptionModule [ "vpnconfinement" "vpnnamespace" ] [ "vpnConfinement" "vpnNamespace" ])
+            (mkRenamedOptionModule ["vpnconfinement" "enable"] ["vpnConfinement" "enable"])
+            (mkRenamedOptionModule ["vpnconfinement" "vpnnamespace"] ["vpnConfinement" "vpnNamespace"])
           ];
 
-          config =
-            let
-              vpn = config.vpnConfinement.vpnNamespace;
-            in
+          config = let
+            vpn = config.vpnConfinement.vpnNamespace;
+          in
             mkIf config.vpnConfinement.enable {
-              bindsTo = [ "${vpn}.service" ];
-              after = [ "${vpn}.service" ];
+              bindsTo = ["${vpn}.service"];
+              after = ["${vpn}.service"];
 
               serviceConfig = {
                 NetworkNamespacePath = "/run/netns/${vpn}";

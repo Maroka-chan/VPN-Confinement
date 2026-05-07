@@ -1,125 +1,124 @@
-{ lib, optionalIPv6String }:
-let
+{
+  lib,
+  optionalIPv6String,
+}: let
   inherit (lib) concatMapStrings;
   inherit (builtins) foldl' toString concatStringsSep;
-in
-rec {
-  generatePreroutingRules =
-    table: namespaceAddress: namespaceAddressIPv6: portMappings:
+in rec {
+  generatePreroutingRules = table: namespaceAddress: namespaceAddressIPv6: portMappings:
     concatStringsSep "\n" (
       map (
         portMap:
-        concatMapStrings
+          concatMapStrings
           (
             protocol:
-            ''
-              iptables -t nat -A ${table} -p ${protocol} \
-              --dport ${toString portMap.from} \
-              -j DNAT --to-destination \
-              ${namespaceAddress}:${toString portMap.to}
-            ''
-            + optionalIPv6String ''
-              ip6tables -t nat -A ${table} -p ${protocol} \
-              --dport ${toString portMap.from} \
-              -j DNAT --to-destination \
-              \[${namespaceAddressIPv6}\]:${toString portMap.to}
-            ''
+              ''
+                iptables -t nat -A ${table} -p ${protocol} \
+                --dport ${toString portMap.from} \
+                -j DNAT --to-destination \
+                ${namespaceAddress}:${toString portMap.to}
+              ''
+              + optionalIPv6String ''
+                ip6tables -t nat -A ${table} -p ${protocol} \
+                --dport ${toString portMap.from} \
+                -j DNAT --to-destination \
+                \[${namespaceAddressIPv6}\]:${toString portMap.to}
+              ''
           )
           (
-            if portMap.protocol == "both" then
-              [
-                "tcp"
-                "udp"
-              ]
-            else
-              [ portMap.protocol ]
+            if portMap.protocol == "both"
+            then [
+              "tcp"
+              "udp"
+            ]
+            else [portMap.protocol]
           )
-      ) portMappings
+      )
+      portMappings
     );
 
-  generateNetNSInputRules =
-    netns: interface: ports:
+  generateNetNSInputRules = netns: interface: ports:
     concatStringsSep "\n" (
       map (
         port:
-        concatMapStrings
+          concatMapStrings
           (
             protocol:
-            addNetNSIPRules netns [
-              ''
-                -A INPUT -p ${protocol} \
-                --dport ${toString port.value} \
-                -j ACCEPT -i ${interface}
-              ''
-            ]
+              addNetNSIPRules netns [
+                ''
+                  -A INPUT -p ${protocol} \
+                  --dport ${toString port.value} \
+                  -j ACCEPT -i ${interface}
+                ''
+              ]
           )
           (
-            if port.protocol == "both" then
-              [
-                "tcp"
-                "udp"
-              ]
-            else
-              [ port.protocol ]
+            if port.protocol == "both"
+            then [
+              "tcp"
+              "udp"
+            ]
+            else [port.protocol]
           )
-      ) ports
+      )
+      ports
     );
 
-  generatePortMapRules =
-    netns: interface: portMappings:
+  generatePortMapRules = netns: interface: portMappings:
     generateNetNSInputRules netns interface (
       foldl' (
         acc: portMap:
-        acc
-        ++ [
-          {
-            value = portMap.to;
-            protocol = portMap.protocol;
-          }
-        ]
-      ) [ ] portMappings
+          acc
+          ++ [
+            {
+              value = portMap.to;
+              protocol = portMap.protocol;
+            }
+          ]
+      ) []
+      portMappings
     );
 
-  generateAllowedPortRules =
-    netns: interface: allowedPorts:
+  generateAllowedPortRules = netns: interface: allowedPorts:
     generateNetNSInputRules netns interface (
       foldl' (
         acc: port:
-        acc
-        ++ [
-          {
-            value = port.port;
-            protocol = port.protocol;
-          }
-        ]
-      ) [ ] allowedPorts
+          acc
+          ++ [
+            {
+              value = port.port;
+              protocol = port.protocol;
+            }
+          ]
+      ) []
+      allowedPorts
     );
 
-  addIPRules =
-    netns: argset:
+  addIPRules = netns: argset:
     concatStringsSep "\n" (
       map (
         args:
-        ''
-          iptables ${args}
-        ''
-        + optionalIPv6String ''
-          ip6tables ${args}
-        ''
-      ) argset
+          ''
+            iptables ${args}
+          ''
+          + optionalIPv6String ''
+            ip6tables ${args}
+          ''
+      )
+      argset
     );
 
-  addNetNSIPRules =
-    netns: argset:
+  addNetNSIPRules = netns: argset:
     concatStringsSep "\n" (
       map (
         args:
-        ''
-          ip netns exec ${netns} iptables ${args}
-        ''
-        + optionalIPv6String ''
-          ip netns exec ${netns} ip6tables ${args}
-        ''
-      ) argset
+          ''
+            ip netns exec ${netns} iptables ${args}
+          ''
+          + optionalIPv6String ''
+            ip netns exec ${netns} ip6tables ${args}
+          ''
+      )
+      argset
     );
 }

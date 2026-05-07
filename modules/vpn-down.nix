@@ -1,5 +1,7 @@
-{ pkgs, optionalIPv6String }:
-netnsName:
+{
+  pkgs,
+  optionalIPv6String,
+}: netnsName:
 pkgs.writeShellApplication {
   name = "${netnsName}-down";
   runtimeInputs = with pkgs; [

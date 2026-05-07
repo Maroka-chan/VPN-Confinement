@@ -3,9 +3,9 @@
   lib,
   config,
   ...
-}:
-let
-  inherit (lib)
+}: let
+  inherit
+    (lib)
     mkIf
     mkOption
     mkRenamedOptionModule
@@ -18,14 +18,12 @@ let
   isIPv6Enabled = config.networking.enableIPv6;
   optionalIPv6String = x: optionalString isIPv6Enabled x;
 
-  namespaceToService =
-    name: def:
-    assert builtins.stringLength name < 8;
-    rec {
+  namespaceToService = name: def:
+    assert builtins.stringLength name < 8; rec {
       description = "${name} network interface";
-      after = [ "network-online.target" ];
-      wants = [ "network-online.target" ];
-      wantedBy = [ "multi-user.target" ];
+      after = ["network-online.target"];
+      wants = ["network-online.target"];
+      wantedBy = ["multi-user.target"];
       restartTriggers = with serviceConfig; [
         ExecStart
         ExecStopPost
@@ -35,35 +33,30 @@ let
         Type = "oneshot";
         RemainAfterExit = true;
 
-        ExecStart =
-          let
-            vpnUp = import ./vpn-up.nix { inherit pkgs lib optionalIPv6String; };
-          in
-          "${vpnUp name def}/bin/${name}-up";
+        ExecStart = let
+          vpnUp = import ./vpn-up.nix {inherit pkgs lib optionalIPv6String;};
+        in "${vpnUp name def}/bin/${name}-up";
 
-        ExecStopPost =
-          let
-            vpnDown = import ./vpn-down.nix { inherit pkgs optionalIPv6String; };
-          in
-          "${vpnDown name}/bin/${name}-down";
+        ExecStopPost = let
+          vpnDown = import ./vpn-down.nix {inherit pkgs optionalIPv6String;};
+        in "${vpnDown name}/bin/${name}-down";
       };
     };
-in
-{
-  imports = [ ./systemd.nix ] ++ [ (mkRenamedOptionModule [ "vpnnamespaces" ] [ "vpnNamespaces" ]) ];
+in {
+  imports = [./systemd.nix] ++ [(mkRenamedOptionModule ["vpnnamespaces"] ["vpnNamespaces"])];
 
   options.vpnNamespaces = mkOption {
-    type = attrsOf (submodule [ (import ./options.nix) ]);
-    default = { };
+    type = attrsOf (submodule [(import ./options.nix)]);
+    default = {};
   };
 
-  config = mkIf (config.vpnNamespaces != { }) {
+  config = mkIf (config.vpnNamespaces != {}) {
     boot.kernel.sysctl."net.ipv4.ip_forward" = 1;
     boot.kernel.sysctl."net.ipv6.conf.all.forwarding" = mkIf isIPv6Enabled 1;
 
     systemd.services = mapAttrs' (n: v: nameValuePair n (namespaceToService n v)) config.vpnNamespaces;
 
     # Make sure resolvconf path exists
-    systemd.tmpfiles.rules = [ "d /run/resolvconf 0755 root root" ];
+    systemd.tmpfiles.rules = ["d /run/resolvconf 0755 root root"];
   };
 }
