@@ -1,4 +1,36 @@
 
+<div align="right">
+  <details>
+    <summary >🌐 Language</summary>
+    <div>
+      <div align="center">
+        <a href="https://openaitx.github.io/view.html?user=Maroka-chan&project=VPN-Confinement&lang=en">English</a>
+        | <a href="https://openaitx.github.io/view.html?user=Maroka-chan&project=VPN-Confinement&lang=zh-CN">简体中文</a>
+        | <a href="https://openaitx.github.io/view.html?user=Maroka-chan&project=VPN-Confinement&lang=zh-TW">繁體中文</a>
+        | <a href="https://openaitx.github.io/view.html?user=Maroka-chan&project=VPN-Confinement&lang=ja">日本語</a>
+        | <a href="https://openaitx.github.io/view.html?user=Maroka-chan&project=VPN-Confinement&lang=ko">한국어</a>
+        | <a href="https://openaitx.github.io/view.html?user=Maroka-chan&project=VPN-Confinement&lang=hi">हिन्दी</a>
+        | <a href="https://openaitx.github.io/view.html?user=Maroka-chan&project=VPN-Confinement&lang=th">ไทย</a>
+        | <a href="https://openaitx.github.io/view.html?user=Maroka-chan&project=VPN-Confinement&lang=fr">Français</a>
+        | <a href="https://openaitx.github.io/view.html?user=Maroka-chan&project=VPN-Confinement&lang=de">Deutsch</a>
+        | <a href="https://openaitx.github.io/view.html?user=Maroka-chan&project=VPN-Confinement&lang=es">Español</a>
+        | <a href="https://openaitx.github.io/view.html?user=Maroka-chan&project=VPN-Confinement&lang=it">Italiano</a>
+        | <a href="https://openaitx.github.io/view.html?user=Maroka-chan&project=VPN-Confinement&lang=ru">Русский</a>
+        | <a href="https://openaitx.github.io/view.html?user=Maroka-chan&project=VPN-Confinement&lang=pt">Português</a>
+        | <a href="https://openaitx.github.io/view.html?user=Maroka-chan&project=VPN-Confinement&lang=nl">Nederlands</a>
+        | <a href="https://openaitx.github.io/view.html?user=Maroka-chan&project=VPN-Confinement&lang=pl">Polski</a>
+        | <a href="https://openaitx.github.io/view.html?user=Maroka-chan&project=VPN-Confinement&lang=ar">العربية</a>
+        | <a href="https://openaitx.github.io/view.html?user=Maroka-chan&project=VPN-Confinement&lang=fa">فارسی</a>
+        | <a href="https://openaitx.github.io/view.html?user=Maroka-chan&project=VPN-Confinement&lang=tr">Türkçe</a>
+        | <a href="https://openaitx.github.io/view.html?user=Maroka-chan&project=VPN-Confinement&lang=vi">Tiếng Việt</a>
+        | <a href="https://openaitx.github.io/view.html?user=Maroka-chan&project=VPN-Confinement&lang=id">Bahasa Indonesia</a>
+        | <a href="https://openaitx.github.io/view.html?user=Maroka-chan&project=VPN-Confinement&lang=as">অসমীয়া</
+      </div>
+    </div>
+  </details>
+</div>
+
+
 
 <div align="center" id="user-content-toc">
   <ul style="list-style: none;">
