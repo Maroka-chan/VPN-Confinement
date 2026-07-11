@@ -191,10 +191,9 @@ in
         )
         def.accessibleFrom}
 
-      # Force all DNS traffic through the WireGuard interface via policy routing.
-      # Port 53 lookups use table 51820, so accessibleFrom routes in main are never consulted for DNS.
-      # If the tunnel drops, table 51820 empties and the lookup falls through to main,
-      # which would send queries over the veth. The dns-leak chain below drops those packets before they escape.
+      # Force all DNS traffic (port 53 TCP/UDP) through the WireGuard interface via policy routing.
+      # Traffic on port 53 uses a separate routing table ('51820') so it always exits through the WireGuard interface. This prevents DNS lookups from passing through the veth pair when the nameserver appears in the main routing table. This in practice means that DNS is not leaked when a nameserver is specified in the 'accessibleFrom' option.
+      # As a failsafe, the 'dns-leak' chain drops any DNS traffic that falls through to the main table. This can happen if the WireGuard interface or the '51820' route is removed.
 
       ip -n ${netnsName} route add default dev ${netnsName}0 table 51820
 
