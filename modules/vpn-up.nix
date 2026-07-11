@@ -195,6 +195,44 @@ in
         )
         def.accessibleFrom}
 
+      # Force all DNS traffic (port 53 TCP/UDP) through the WireGuard interface via policy routing.
+      # Traffic on port 53 uses a separate routing table ('51820') so it always exits through the WireGuard interface. This prevents DNS lookups from passing through the veth pair when the nameserver appears in the main routing table. This in practice means that DNS is not leaked when a nameserver is specified in the 'accessibleFrom' option.
+      # As a failsafe, the 'dns-leak' chain drops any DNS traffic that falls through to the main table. This can happen if the WireGuard interface or the '51820' route is removed.
+
+      ip -n ${netnsName} route add default dev ${netnsName}0 table 51820
+
+      ip -n ${netnsName} rule add ipproto udp dport 53 lookup 51820 priority 100
+      ip -n ${netnsName} rule add ipproto tcp dport 53 lookup 51820 priority 100
+
+      # Guard against DNS leaks when routing table ('51820') is not present.
+      # Monitor dropped packets with:
+      #   sudo ip netns exec ${netnsName} iptables -L dns-leak -v -n
+      ip netns exec ${netnsName} iptables -N dns-leak
+
+      ip netns exec ${netnsName} iptables -A dns-leak \
+        -m limit --limit 1/min -j LOG --log-prefix "dns-leak: "
+      ip netns exec ${netnsName} iptables -A dns-leak -j DROP
+
+      ip netns exec ${netnsName} iptables -I OUTPUT 1 -o veth-${netnsName} \
+        -p udp --dport 53 -j dns-leak
+      ip netns exec ${netnsName} iptables -I OUTPUT 1 -o veth-${netnsName} \
+        -p tcp --dport 53 -j dns-leak
+
+      ${optionalIPv6String ''
+        ip -6 -n ${netnsName} route add default dev ${netnsName}0 table 51820
+        ip -6 -n ${netnsName} rule add ipproto udp dport 53 lookup 51820 priority 100
+        ip -6 -n ${netnsName} rule add ipproto tcp dport 53 lookup 51820 priority 100
+
+        ip netns exec ${netnsName} ip6tables -N dns-leak
+        ip netns exec ${netnsName} ip6tables -A dns-leak \
+          -m limit --limit 1/min -j LOG --log-prefix "dns-leak6: "
+        ip netns exec ${netnsName} ip6tables -A dns-leak -j DROP
+        ip netns exec ${netnsName} ip6tables -I OUTPUT 1 -o veth-${netnsName} \
+          -p udp --dport 53 -j dns-leak
+        ip netns exec ${netnsName} ip6tables -I OUTPUT 1 -o veth-${netnsName} \
+          -p tcp --dport 53 -j dns-leak
+      ''}
+
       # Add prerouting rules
       iptables -t nat -N ${netnsName}-prerouting
       iptables -t nat -A PREROUTING -j ${netnsName}-prerouting
