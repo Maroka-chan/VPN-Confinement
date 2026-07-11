@@ -200,7 +200,7 @@ in
       ip -n ${netnsName} rule add ipproto udp dport 53 lookup 51820 priority 100
       ip -n ${netnsName} rule add ipproto tcp dport 53 lookup 51820 priority 100
 
-      # Guard against DNS leaks when the WireGuard tunnel is down.
+      # Guard against DNS leaks when routing table ('51820') is not present.
       # Monitor dropped packets with:
       #   sudo ip netns exec ${netnsName} iptables -L dns-leak -v -n
       ip netns exec ${netnsName} iptables -N dns-leak
