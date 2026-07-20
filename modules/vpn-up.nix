@@ -183,17 +183,29 @@ in
             if isValidIPv4 x
             then ''
               ip -n ${netnsName} route add ${x} via ${def.bridgeAddress}
+              ip netns exec ${netnsName} iptables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+              ip netns exec ${netnsName} iptables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate NEW -j DROP
             ''
             else
               optionalIPv6String ''
                 ip -n ${netnsName} route add ${x} via ${def.bridgeAddressIPv6}
+                ip netns exec ${netnsName} ip6tables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+                ip netns exec ${netnsName} ip6tables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate NEW -j DROP
               ''
         )
         def.accessibleFrom}
 
-      # Force all DNS traffic (port 53 TCP/UDP) through the WireGuard interface via policy routing.
-      # Traffic on port 53 uses a separate routing table ('51820') so it always exits through the WireGuard interface. This prevents DNS lookups from passing through the veth pair when the nameserver appears in the main routing table. This in practice means that DNS is not leaked when a nameserver is specified in the 'accessibleFrom' option.
-      # As a failsafe, the 'dns-leak' chain drops any DNS traffic that falls through to the main table. This can happen if the WireGuard interface or the '51820' route is removed.
+      # Force all DNS traffic (port 53 TCP/UDP) through
+      # the WireGuard interface via policy routing.
+      #
+      # Traffic on port 53 uses a separate routing table ('51820')
+      # so it always exits through the WireGuard interface.
+      # This prevents DNS lookups from passing through the veth pair when the
+      # nameserver appears in the main routing table. This in practice means
+      # that DNS is not leaked when a nameserver is specified in
+      # the 'accessibleFrom' option. As a failsafe, the 'dns-leak' chain drops
+      # any DNS traffic that falls through to the main table. This can happen
+      # if the WireGuard interface or the '51820' route is removed.
 
       ip -n ${netnsName} route add default dev ${netnsName}0 table 51820
 
