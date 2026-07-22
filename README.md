@@ -51,6 +51,9 @@ vpnNamespaces.<name> = { # The name is limited to 7 characters
   accessibleFrom = [
     "<ip or subnet>"
   ];
+  allowedEgress = [ # Destinations the namespace may reach outside the tunnel
+    "<ip or subnet>"
+  ];
   portMappings = [{
       from = <port on host>;
       to = <port in VPN network namespace>;

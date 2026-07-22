@@ -40,6 +40,28 @@ in {
       ];
     };
 
+    allowedEgress = mkOption {
+      type = listOf ipAddress;
+      default = [];
+      description = ''
+        Subnets, ranges, and specific addresses that the
+        namespace may initiate connections to outside the
+        VPN tunnel, e.g. a database or media server on the
+        host or LAN.
+
+        Traffic to these destinations is routed over the
+        veth pair instead of the tunnel, and is exempt from
+        the kill switch that drops new outgoing connections
+        via the veth. All other outgoing traffic still only
+        leaves through the tunnel.
+      '';
+      example = [
+        "10.0.2.15"
+        "192.168.1.0/24"
+        "fd25:9ab6:6133::203"
+      ];
+    };
+
     namespaceAddress = mkOption {
       type = ipv4;
       default = "192.168.15.1";

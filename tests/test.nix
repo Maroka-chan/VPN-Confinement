@@ -31,6 +31,12 @@
           "fd25:9ab6:6133::/64"
           "::"
         ];
+        # deliberately outside the accessibleFrom subnets, so these prove
+        # allowedEgress installs its own routes
+        allowedEgress = [
+          "172.16.0.99"
+          "fd25:9ab6:6134::99"
+        ];
         # Test unconventional name for config file
         wireguardConfigFile = "/etc/wireguard/wireguardconfiguration.txt";
         portMappings = [
@@ -139,6 +145,19 @@
       '[ $(cat /sys/class/net/veth-wg-br/operstate) == "up" ]')
     machine_dhcp.succeed(
       '[ $(ip netns exec wg cat /sys/class/net/veth-wg/operstate) == "up" ]')
+
+    # allowedEgress installs a route via the bridge and an accept that
+    # precedes the veth NEW drop, for v4 and v6
+    machine_dhcp.succeed(
+      'ip netns exec wg ip route get 172.16.0.99 | grep -q "via 192.168.15.5"')
+    machine_dhcp.succeed(
+      'ip netns exec wg ip route get fd25:9ab6:6134::99 | grep -q "via fd93:9701:1d00::1"')
+
+    egress_rules = machine_dhcp.succeed("ip netns exec wg iptables -S OUTPUT")
+    assert egress_rules.index("-d 172.16.0.99/32") < egress_rules.index("--ctstate NEW -j DROP")
+
+    egress_rules_v6 = machine_dhcp.succeed("ip netns exec wg ip6tables -S OUTPUT")
+    assert egress_rules_v6.index("-d fd25:9ab6:6134::99/128") < egress_rules_v6.index("--ctstate NEW -j DROP")
 
     machine_networkd.wait_for_unit("wg.service")
 

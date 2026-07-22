@@ -178,6 +178,25 @@ in
         ip -6 -n ${netnsName} route add default dev ${netnsName}0
       ''}
 
+      # Allow the namespace to initiate connections to specific
+      # destinations outside the tunnel (allowedEgress). Routed via the
+      # bridge, and accepted before the kill switch rules below so these
+      # destinations are exempt from the veth NEW drop.
+      ${concatMapStrings (
+          x:
+            if isValidIPv4 x
+            then ''
+              ip -n ${netnsName} route add ${x} via ${def.bridgeAddress}
+              ip netns exec ${netnsName} iptables -A OUTPUT -o veth-${netnsName} -d ${x} -j ACCEPT
+            ''
+            else
+              optionalIPv6String ''
+                ip -n ${netnsName} route add ${x} via ${def.bridgeAddressIPv6}
+                ip netns exec ${netnsName} ip6tables -A OUTPUT -o veth-${netnsName} -d ${x} -j ACCEPT
+              ''
+        )
+        def.allowedEgress}
+
       ${concatMapStrings (
           x:
             if isValidIPv4 x
