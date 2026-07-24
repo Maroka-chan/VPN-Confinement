@@ -28,6 +28,7 @@ static int do_mount(const char *src, const char *dst, const char *type, unsigned
 
 static void mask_path_if_exists(const char *path) {
     struct stat st;
+
     if (stat(path, &st) == 0) {
         // Path exists, so mount MUST succeed
         if (S_ISDIR(st.st_mode)) {
@@ -124,6 +125,16 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    // DNS leak prevention by masking system DNS service paths.
+    // Similar to systemd InaccessiblePaths, but more robust: MS_PRIVATE
+    // ensures these paths cannot become accessible even if the host adds
+    // or removes mounts after we enter the namespace.
+    mask_path_if_exists("/run/nscd");
+    mask_path_if_exists("/run/resolvconf");
+    mask_path_if_exists("/run/systemd/resolve/io.systemd.Resolve");
+    mask_path_if_exists("/run/systemd/resolve/stub-resolv.conf");
+    mask_path_if_exists("/run/systemd/resolve/resolv.conf");
+
     // Bind-mount netns-specific files (same as ip netns exec does).
     // More strict because we exit the program if any of the files are not
     // present, as we require them for configuring DNS and preventing leaks.
@@ -143,16 +154,6 @@ int main(int argc, char *argv[]) {
     if (do_mount(buf, "/etc/hosts", NULL, MS_BIND) != 0) {
         return 1;
     }
-
-    // DNS leak prevention by masking system DNS service paths.
-    // Similar to systemd InaccessiblePaths, but more robust: MS_PRIVATE
-    // ensures these paths cannot become accessible even if the host adds
-    // or removes mounts after we enter the namespace.
-    mask_path_if_exists("/run/nscd");
-    mask_path_if_exists("/run/resolvconf");
-    mask_path_if_exists("/run/systemd/resolve/io.systemd.Resolve");
-    mask_path_if_exists("/run/systemd/resolve/stub-resolv.conf");
-    mask_path_if_exists("/run/systemd/resolve/resolv.conf");
 
     // Drop all capabilities before exec
     drop_privileges();
