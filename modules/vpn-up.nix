@@ -71,13 +71,20 @@ in
         ip -n ${netnsName} address add "$addr" dev ${netnsName}0
       done
 
-      # Add DNS
+      # Clean up old netns config files
       rm -rf /etc/netns/${netnsName}
       mkdir -p /etc/netns/${netnsName}
+
+      # Generate resolv.conf
       IFS=","
       # shellcheck disable=SC2154
       for ns in $DNS; do
-        echo "nameserver $ns" >> /etc/netns/${netnsName}/resolv.conf
+        echo "nameserver $ns"
+      done > /etc/netns/${netnsName}/resolv.conf
+
+      # Setup DNS firewall rules
+      IFS=","
+      for ns in $DNS; do
         if [[ $ns == *"."* ]]; then
           ip netns exec ${netnsName} iptables \
             -I dns-fw -p udp -d "$ns" -j ACCEPT
@@ -89,9 +96,17 @@ in
         fi
       done
 
-      # Add nsswitch config
-      echo "hosts: files dns" > /etc/netns/${netnsName}/nsswitch.conf
-      echo "networks: files" >> /etc/netns/${netnsName}/nsswitch.conf
+      # Generate nsswitch config
+      cat > /etc/netns/${netnsName}/nsswitch.conf << EOF
+      hosts: files dns
+      networks: files
+      EOF
+
+      # Generate hosts file
+      cat > /etc/netns/${netnsName}/hosts << EOF
+      127.0.0.1 localhost
+      ::1 localhost
+      EOF
 
       # Strips the config of wg-quick settings
       shopt -s extglob
