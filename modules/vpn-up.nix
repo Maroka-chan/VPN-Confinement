@@ -122,7 +122,7 @@ in
         ip -n ${netnsName} address add "$addr" dev ${netnsName}0
       done
 
-      # Add DNS
+      # Clean up old netns config files
       rm -rf /etc/netns/${netnsName}
       mkdir -p /etc/netns/${netnsName}
 
@@ -145,9 +145,17 @@ in
         fi
       done
 
-      # Add nsswitch config
-      echo "hosts: files dns" > /etc/netns/${netnsName}/nsswitch.conf
-      echo "networks: files" >> /etc/netns/${netnsName}/nsswitch.conf
+      # Generate nsswitch config
+      cat > /etc/netns/${netnsName}/nsswitch.conf << EOF
+      hosts: files dns
+      networks: files
+      EOF
+
+      # Generate hosts file
+      cat > /etc/netns/${netnsName}/hosts << EOF
+      127.0.0.1 localhost
+      ::1 localhost
+      EOF
 
       # The wireguard endpoint is an IP address with a port. Extract the address alone, and test for
       # connectivity using ping.
