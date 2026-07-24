@@ -134,6 +134,13 @@ int main(int argc, char *argv[]) {
     mask_path_if_exists("/run/systemd/resolve/io.systemd.Resolve");
     mask_path_if_exists("/run/systemd/resolve/stub-resolv.conf");
     mask_path_if_exists("/run/systemd/resolve/resolv.conf");
+    mask_path_if_exists("/run/systemd/resolve/netif");
+    // mDNS can leak local network queries
+    mask_path_if_exists("/run/avahi-daemon");
+    mask_path_if_exists("/var/run/avahi-daemon");
+    // If you use LDAP/enterprise authentication
+    mask_path_if_exists("/var/run/nslcd");
+    mask_path_if_exists("/var/run/sssd");
 
     // Bind-mount netns-specific files (same as ip netns exec does).
     // More strict because we exit the program if any of the files are not
