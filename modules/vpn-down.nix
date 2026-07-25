@@ -39,5 +39,25 @@ pkgs.writeShellApplication {
     ${optionalIPv6String ''
       ip6tables -t nat -X ${netnsName}-prerouting
     ''}
+
+    # Delete postrouting rules
+    while read -r rule
+    do
+      # shellcheck disable=SC2086
+      iptables -t nat -D ''${rule#* }
+    done < <(iptables -t nat -S | awk '/${netnsName}-postrouting/ && !/-N/')
+
+    ${optionalIPv6String ''
+      while read -r rule
+      do
+        # shellcheck disable=SC2086
+        ip6tables -t nat -D ''${rule#* }
+      done < <(ip6tables -t nat -S | awk '/${netnsName}-postrouting/ && !/-N/')
+    ''}
+
+    iptables -t nat -X ${netnsName}-postrouting
+    ${optionalIPv6String ''
+      ip6tables -t nat -X ${netnsName}-postrouting
+    ''}
   '';
 }

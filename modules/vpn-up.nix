@@ -181,17 +181,19 @@ in
       # Allow the namespace to initiate connections to specific
       # destinations outside the tunnel (allowedEgress). Routed via the
       # bridge, and accepted before the kill switch rules below so these
-      # destinations are exempt from the veth NEW drop.
+      # destinations are exempt from the veth NEW drop. Routes use
+      # replace, not add, so a range appearing in both allowedEgress
+      # and accessibleFrom cannot fail the script.
       ${concatMapStrings (
           x:
             if isValidIPv4 x
             then ''
-              ip -n ${netnsName} route add ${x} via ${def.bridgeAddress}
+              ip -n ${netnsName} route replace ${x} via ${def.bridgeAddress}
               ip netns exec ${netnsName} iptables -A OUTPUT -o veth-${netnsName} -d ${x} -j ACCEPT
             ''
             else
               optionalIPv6String ''
-                ip -n ${netnsName} route add ${x} via ${def.bridgeAddressIPv6}
+                ip -n ${netnsName} route replace ${x} via ${def.bridgeAddressIPv6}
                 ip netns exec ${netnsName} ip6tables -A OUTPUT -o veth-${netnsName} -d ${x} -j ACCEPT
               ''
         )
@@ -201,13 +203,13 @@ in
           x:
             if isValidIPv4 x
             then ''
-              ip -n ${netnsName} route add ${x} via ${def.bridgeAddress}
+              ip -n ${netnsName} route replace ${x} via ${def.bridgeAddress}
               ip netns exec ${netnsName} iptables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
               ip netns exec ${netnsName} iptables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate NEW -j DROP
             ''
             else
               optionalIPv6String ''
-                ip -n ${netnsName} route add ${x} via ${def.bridgeAddressIPv6}
+                ip -n ${netnsName} route replace ${x} via ${def.bridgeAddressIPv6}
                 ip netns exec ${netnsName} ip6tables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
                 ip netns exec ${netnsName} ip6tables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate NEW -j DROP
               ''
@@ -271,6 +273,29 @@ in
         generatePreroutingRules "${netnsName}-prerouting" def.namespaceAddress def.namespaceAddressIPv6
         def.portMappings
       }
+
+      # Masquerade namespace-initiated traffic to allowedEgress
+      # destinations. Replies from LAN machines beyond the host would
+      # otherwise target the private namespace address, which the LAN
+      # cannot route.
+      iptables -t nat -N ${netnsName}-postrouting
+      iptables -t nat -A POSTROUTING -j ${netnsName}-postrouting
+      ${optionalIPv6String ''
+        ip6tables -t nat -N ${netnsName}-postrouting
+        ip6tables -t nat -A POSTROUTING -j ${netnsName}-postrouting
+      ''}
+      ${concatMapStrings (
+          x:
+            if isValidIPv4 x
+            then ''
+              iptables -t nat -A ${netnsName}-postrouting -s ${def.namespaceAddress}/24 -d ${x} -j MASQUERADE
+            ''
+            else
+              optionalIPv6String ''
+                ip6tables -t nat -A ${netnsName}-postrouting -s ${def.namespaceAddressIPv6}/64 -d ${x} -j MASQUERADE
+              ''
+        )
+        def.allowedEgress}
 
       # Add veth INPUT rules
       ${generatePortMapRules netnsName "veth-${netnsName}" def.portMappings}

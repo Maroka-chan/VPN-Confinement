@@ -31,11 +31,19 @@
           "fd25:9ab6:6133::/64"
           "::"
         ];
-        # deliberately outside the accessibleFrom subnets, so these prove
-        # allowedEgress installs its own routes
+        # 172.16.0.99 and fd25:9ab6:6134::99 are deliberately outside the
+        # accessibleFrom subnets, so they prove allowedEgress installs its
+        # own routes. 10.0.0.0/8 deliberately duplicates an accessibleFrom
+        # entry, so it proves the overlap cannot fail the start script.
         allowedEgress = [
           "172.16.0.99"
           "fd25:9ab6:6134::99"
+          "10.0.0.0/8"
+          # the test driver numbers every machine as 192.168.1.x on the
+          # shared vlan. fdc0:1::/64 is a static ULA assigned to eth1 on
+          # two machines below. both back the end-to-end LAN egress pings.
+          "192.168.1.0/24"
+          "fdc0:1::/64"
         ];
         # Test unconventional name for config file
         wireguardConfigFile = "/etc/wireguard/wireguardconfiguration.txt";
@@ -63,7 +71,19 @@
       config = lib.mkMerge (config ++ [base]);
     };
   in {
-    machine_dhcp = createNode [basicNetns];
+    machine_dhcp = createNode [
+      basicNetns
+      {
+        # static ULA on the test vlan, used as the masquerade source for
+        # the v6 LAN egress ping
+        networking.interfaces.eth1.ipv6.addresses = [
+          {
+            address = "fdc0:1::3";
+            prefixLength = 64;
+          }
+        ];
+      }
+    ];
 
     machine_networkd = createNode [
       basicNetns
@@ -72,6 +92,14 @@
         systemd.network.enable = true;
         networking.useDHCP = false;
         networking.dhcpcd.enable = false;
+
+        # target of the v6 LAN egress ping
+        networking.interfaces.eth1.ipv6.addresses = [
+          {
+            address = "fdc0:1::6";
+            prefixLength = 64;
+          }
+        ];
       }
     ];
 
@@ -159,6 +187,13 @@
     egress_rules_v6 = machine_dhcp.succeed("ip netns exec wg ip6tables -S OUTPUT")
     assert egress_rules_v6.index("-d fd25:9ab6:6134::99/128") < egress_rules_v6.index("--ctstate NEW -j DROP")
 
+    # allowedEgress masquerades namespace traffic on the host, so LAN
+    # machines beyond the host can route replies back
+    machine_dhcp.succeed(
+      "iptables -t nat -S wg-postrouting | grep -q -- '-d 172.16.0.99/32.*-j MASQUERADE'")
+    machine_dhcp.succeed(
+      "ip6tables -t nat -S wg-postrouting | grep -q -- '-d fd25:9ab6:6134::99/128.*-j MASQUERADE'")
+
     machine_networkd.wait_for_unit("wg.service")
 
     machine_networkd.succeed(
@@ -167,6 +202,18 @@
       '[ $(cat /sys/class/net/veth-wg-br/operstate) == "up" ]')
     machine_networkd.succeed(
       '[ $(ip netns exec wg cat /sys/class/net/veth-wg/operstate) == "up" ]')
+
+    # LAN egress, end to end: reach another machine on the test vlan from
+    # inside the netns. The peer has no route back to the namespace
+    # subnet, so replies only arrive if the host forwarded and
+    # masqueraded the traffic.
+    peer_v4 = machine_networkd.succeed(
+      "ip -4 -o addr show eth1 scope global | awk 'NR==1 {print $4}' | cut -d/ -f1"
+    ).strip()
+    machine_dhcp.wait_until_succeeds(
+      f"ip netns exec wg ping -c 1 -W 2 {peer_v4}", timeout=60)
+    machine_dhcp.wait_until_succeeds(
+      "ip netns exec wg ping -c 1 -W 2 fdc0:1::6", timeout=60)
 
     machine_max_name_length.wait_for_unit("vpnname.service")
 
