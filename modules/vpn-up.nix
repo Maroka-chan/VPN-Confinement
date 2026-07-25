@@ -18,6 +18,8 @@
 
   utils = import ../lib/utils.nix {inherit lib;};
   inherit (utils) isValidIPv4;
+
+  routeDestinations = lib.unique (def.allowedEgress ++ def.accessibleFrom);
 in
   pkgs.writeShellApplication {
     name = "${netnsName}-up";
@@ -178,22 +180,36 @@ in
         ip -6 -n ${netnsName} route add default dev ${netnsName}0
       ''}
 
-      # Allow the namespace to initiate connections to specific
-      # destinations outside the tunnel (allowedEgress). Routed via the
-      # bridge, and accepted before the kill switch rules below so these
-      # destinations are exempt from the veth NEW drop. Routes use
-      # replace, not add, so a range appearing in both allowedEgress
-      # and accessibleFrom cannot fail the script.
+      # Routes for every destination reachable via the bridge, from both
+      # accessibleFrom and allowedEgress. Deduplicated so a range appearing
+      # in both lists cannot fail the script, while a genuinely conflicting
+      # route (a full range colliding with the tunnel default) still fails
+      # loudly instead of silently replacing it.
       ${concatMapStrings (
           x:
             if isValidIPv4 x
             then ''
-              ip -n ${netnsName} route replace ${x} via ${def.bridgeAddress}
+              ip -n ${netnsName} route add ${x} via ${def.bridgeAddress}
+            ''
+            else
+              optionalIPv6String ''
+                ip -n ${netnsName} route add ${x} via ${def.bridgeAddressIPv6}
+              ''
+        )
+        routeDestinations}
+
+      # Allow the namespace to initiate connections to specific
+      # destinations outside the tunnel (allowedEgress). Accepted before
+      # the kill switch rules below so these destinations are exempt from
+      # the veth NEW drop.
+      ${concatMapStrings (
+          x:
+            if isValidIPv4 x
+            then ''
               ip netns exec ${netnsName} iptables -A OUTPUT -o veth-${netnsName} -d ${x} -j ACCEPT
             ''
             else
               optionalIPv6String ''
-                ip -n ${netnsName} route replace ${x} via ${def.bridgeAddressIPv6}
                 ip netns exec ${netnsName} ip6tables -A OUTPUT -o veth-${netnsName} -d ${x} -j ACCEPT
               ''
         )
@@ -203,13 +219,11 @@ in
           x:
             if isValidIPv4 x
             then ''
-              ip -n ${netnsName} route replace ${x} via ${def.bridgeAddress}
               ip netns exec ${netnsName} iptables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
               ip netns exec ${netnsName} iptables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate NEW -j DROP
             ''
             else
               optionalIPv6String ''
-                ip -n ${netnsName} route replace ${x} via ${def.bridgeAddressIPv6}
                 ip netns exec ${netnsName} ip6tables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
                 ip netns exec ${netnsName} ip6tables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate NEW -j DROP
               ''
@@ -288,11 +302,11 @@ in
           x:
             if isValidIPv4 x
             then ''
-              iptables -t nat -A ${netnsName}-postrouting -s ${def.namespaceAddress}/24 -d ${x} -j MASQUERADE
+              iptables -t nat -A ${netnsName}-postrouting -s ${def.namespaceAddress} -d ${x} -j MASQUERADE
             ''
             else
               optionalIPv6String ''
-                ip6tables -t nat -A ${netnsName}-postrouting -s ${def.namespaceAddressIPv6}/64 -d ${x} -j MASQUERADE
+                ip6tables -t nat -A ${netnsName}-postrouting -s ${def.namespaceAddressIPv6} -d ${x} -j MASQUERADE
               ''
         )
         def.allowedEgress}
