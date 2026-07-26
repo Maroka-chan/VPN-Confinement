@@ -23,6 +23,7 @@ in
     name = "${netnsName}-up";
     runtimeInputs = with pkgs; [
       bash
+      sysctl
       iproute2
       iptables
       unixtools.ping
@@ -277,5 +278,9 @@ in
 
       # Add VPN INPUT rules
       ${generateAllowedPortRules netnsName "${netnsName}0" def.openVPNPorts}
+
+      # Allow unprivileged ICMP sockets.
+      # This is the default on the host, so we just match it to make ping work.
+      ip netns exec ${netnsName} sysctl -w net.ipv4.ping_group_range="0 2147483647"
     '';
   }
