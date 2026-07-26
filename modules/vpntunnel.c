@@ -5,11 +5,25 @@
 #include <unistd.h>
 #include <sched.h>
 #include <sys/mount.h>
+#include <sys/prctl.h>
 #include <sys/stat.h>
 #include <sys/capability.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <net/if.h>
+#include <linux/capability.h>
+
+#include <unsecvars.h>
+
+#define UNSECURE_ENVVARS_TUNABLES \
+  "MALLOC_CHECK_\0" \
+  "MALLOC_TOP_PAD_\0" \
+  "MALLOC_PERTURB_\0" \
+  "MALLOC_MMAP_THRESHOLD_\0" \
+  "MALLOC_TRIM_THRESHOLD_\0" \
+  "MALLOC_MMAP_MAX_\0" \
+  "MALLOC_ARENA_MAX\0" \
+  "MALLOC_ARENA_TEST\0"
 
 #define NETNS_DIR "/var/run/netns"
 #define NETNS_CONF_DIR "/etc/netns"
@@ -55,18 +69,35 @@ static void mask_path_if_exists(const char *path) {
 }
 
 static void drop_privileges(void) {
-    // Drop all capabilities before exec.
-    // This makes the target program run completely unprivileged inside the namespace.
-    // If specific capabilities are needed (e.g., CAP_NET_BIND_SERVICE),
-    // set them on the target binary with: setcap cap_name+ep /path/to/binary,
-    // or with the securityWrappers option on NixOS.
+    // Get current ambient capabilities
+    cap_value_t ambient_caps[CAP_LAST_CAP + 1];
+    int ambient_count = 0;
+
+    for (int i = 0; i <= CAP_LAST_CAP; i++) {
+        if (prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_IS_SET, i, 0, 0) == 1) {
+            ambient_caps[ambient_count++] = i;
+        }
+    }
+
+    // Set capabilities to only what was ambient (explicitly granted)
     cap_t caps = cap_get_proc();
     if (caps == NULL) {
         perror("cap_get_proc");
         exit(1);
     }
 
-    cap_clear(caps);  // Clear all capabilities - completely unprivileged
+    // Clear only permitted, effective, inheritable (NOT bounding set)
+    cap_clear_flag(caps, CAP_PERMITTED);
+    cap_clear_flag(caps, CAP_EFFECTIVE);
+    cap_clear_flag(caps, CAP_INHERITABLE);
+    // Bounding set stays intact - allows exec'd programs to get file caps
+
+    if (ambient_count > 0) {
+        // Restore only the ambient capabilities
+        cap_set_flag(caps, CAP_PERMITTED, ambient_count, ambient_caps, CAP_SET);
+        cap_set_flag(caps, CAP_EFFECTIVE, ambient_count, ambient_caps, CAP_SET);
+        cap_set_flag(caps, CAP_INHERITABLE, ambient_count, ambient_caps, CAP_SET);
+    }
 
     if (cap_set_proc(caps) != 0) {
         perror("cap_set_proc");
@@ -74,12 +105,27 @@ static void drop_privileges(void) {
     }
 
     cap_free(caps);
+
+    // Re-raise ambient caps so they survive exec
+    for (int i = 0; i < ambient_count; i++) {
+        if (prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_RAISE, ambient_caps[i], 0, 0) != 0) {
+            perror("prctl PR_CAP_AMBIENT_RAISE");
+            exit(1);
+        }
+    }
 }
 
 int main(int argc, char *argv[]) {
     if (argc < 3) {
         fprintf(stderr, "Usage: %s <namespace> <command> [args...]\n", argv[0]);
         return 1;
+    }
+
+    // Sanitize environment variables (before any other operations)
+    for (char *unsec = UNSECURE_ENVVARS_TUNABLES UNSECURE_ENVVARS;
+         *unsec;
+         unsec = strchr(unsec, 0) + 1) {
+        unsetenv(unsec);
     }
 
     const char *ns = argv[1];
