@@ -69,6 +69,24 @@ static void mask_path_if_exists(const char *path) {
 }
 
 static void drop_privileges(void) {
+    // Drop all capabilities before exec, preserving only ambient capabilities.
+    //
+    // This ensures vpntunnel acts as a transparent wrapper:
+    // - Drops vpntunnel's own CAP_SYS_ADMIN (from file caps or root)
+    // - Preserves ambient capabilities set by systemd (for service use)
+    // - Leaves bounding set intact (allows exec'd programs to get file caps)
+    //
+    // IMPORTANT: Ambient capabilities only work when vpntunnel has NO file
+    // capabilities. The kernel clears ambient caps when exec'ing a binary
+    // with file capabilities (security.capability xattr).
+    //
+    // Usage patterns:
+    // - Interactive (wrapper with file caps): No ambient caps, drops all
+    // - Systemd (unwrapped, no file caps): Preserves systemd AmbientCapabilities
+    //
+    // For systemd services needing ambient capabilities, use the unwrapped
+    // vpntunnel from the Nix store, NOT /run/wrappers/bin/vpntunnel.
+
     // Get current ambient capabilities
     cap_value_t ambient_caps[CAP_LAST_CAP + 1];
     int ambient_count = 0;
