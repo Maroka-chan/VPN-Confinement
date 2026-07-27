@@ -289,9 +289,11 @@ in
       }
 
       # Masquerade namespace-initiated traffic to allowedEgress
-      # destinations. Replies from LAN machines beyond the host would
-      # otherwise target the private namespace address, which the LAN
-      # cannot route.
+      # destinations. Without this, packets leave the host with the
+      # private namespace source address. The destination either
+      # discards them on arrival (rp_filter, no route back to the
+      # source) or accepts them and fails to route its replies, so
+      # connections never complete regardless.
       iptables -t nat -N ${netnsName}-postrouting
       iptables -t nat -A POSTROUTING -j ${netnsName}-postrouting
       ${optionalIPv6String ''
