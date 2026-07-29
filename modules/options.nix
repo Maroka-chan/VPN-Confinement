@@ -10,6 +10,10 @@
     enum
     ;
 in {
+  imports = [
+    (lib.mkRenamedOptionModule ["accessibleFrom"] ["allowedIngress"])
+  ];
+
   options = {
     enable =
       mkEnableOption "vpn netns"
@@ -25,7 +29,7 @@ in {
         '';
       };
 
-    accessibleFrom = mkOption {
+    allowedIngress = mkOption {
       type = listOf ipAddress;
       default = [];
       description = ''

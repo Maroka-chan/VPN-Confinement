@@ -1,5 +1,3 @@
-
-
 <div align="center" id="user-content-toc">
   <ul style="list-style: none;">
     <summary>
@@ -48,7 +46,7 @@
 vpnNamespaces.<name> = { # The name is limited to 7 characters
   enable = true;
   wireguardConfigFile = <path to secret wireguard config file>;
-  accessibleFrom = [
+  allowedIngress = [
     "<ip or subnet>"
   ];
   allowedEgress = [ # Destinations the namespace may reach outside the tunnel
@@ -85,7 +83,7 @@ systemd.services.<name>.vpnConfinement = {
   vpnNamespaces.wg = {
     enable = true;
     wireguardConfigFile = /. + "/secrets/wg0.conf";
-    accessibleFrom = [
+    allowedIngress = [
       "192.168.0.0/24"
     ];
     portMappings = [

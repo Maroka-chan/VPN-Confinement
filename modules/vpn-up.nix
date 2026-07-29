@@ -19,7 +19,7 @@
   utils = import ../lib/utils.nix {inherit lib;};
   inherit (utils) isValidIPv4;
 
-  routeDestinations = lib.unique (def.allowedEgress ++ def.accessibleFrom);
+  routeDestinations = lib.unique (def.allowedEgress ++ def.allowedIngress);
 in
   pkgs.writeShellApplication {
     name = "${netnsName}-up";
@@ -181,7 +181,7 @@ in
       ''}
 
       # Routes for every destination reachable via the bridge, from both
-      # accessibleFrom and allowedEgress. Deduplicated so a range appearing
+      # allowedIngress and allowedEgress. Deduplicated so a range appearing
       # in both lists cannot fail the script, while a genuinely conflicting
       # route (a full range colliding with the tunnel default) still fails
       # loudly instead of silently replacing it.
@@ -228,7 +228,7 @@ in
                 ip netns exec ${netnsName} ip6tables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate NEW -j DROP
               ''
         )
-        def.accessibleFrom}
+        def.allowedIngress}
 
       # Force all DNS traffic (port 53 TCP/UDP) through
       # the WireGuard interface via policy routing.
@@ -238,7 +238,7 @@ in
       # This prevents DNS lookups from passing through the veth pair when the
       # nameserver appears in the main routing table. This in practice means
       # that DNS is not leaked when a nameserver is specified in
-      # the 'accessibleFrom' option. As a failsafe, the 'dns-leak' chain drops
+      # the 'allowedIngress' option. As a failsafe, the 'dns-leak' chain drops
       # any DNS traffic that falls through to the main table. This can happen
       # if the WireGuard interface or the '51820' route is removed.
 

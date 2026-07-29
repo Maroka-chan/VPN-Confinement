@@ -24,7 +24,7 @@
     basicNetns = {
       vpnNamespaces.wg = {
         enable = true;
-        accessibleFrom = [
+        allowedIngress = [
           "192.168.0.0/24"
           "10.0.0.0/8"
           "127.0.0.1"
@@ -32,8 +32,8 @@
           "::"
         ];
         # 172.16.0.99 and fd25:9ab6:6134::99 are deliberately outside the
-        # accessibleFrom subnets, so they prove allowedEgress installs its
-        # own routes. 10.0.0.0/8 deliberately duplicates an accessibleFrom
+        # allowedIngress subnets, so they prove allowedEgress installs its
+        # own routes. 10.0.0.0/8 deliberately duplicates an allowedIngress
         # entry, so it proves the overlap cannot fail the start script.
         allowedEgress = [
           "172.16.0.99"
@@ -117,6 +117,18 @@
         vpnNamespaces.vpn-nam = {
           enable = true;
           wireguardConfigFile = "/etc/wireguard/wg0.conf";
+        };
+      }
+    ];
+
+    machine_renamed_option = createNode [
+      {
+        vpnNamespaces.wg = {
+          enable = true;
+          wireguardConfigFile = "/etc/wireguard/wg0.conf";
+          # deliberately uses the pre-rename option name, so this machine
+          # proves the mkRenamedOptionModule alias keeps old configs working
+          accessibleFrom = ["192.168.0.0/24"];
         };
       }
     ];
@@ -226,6 +238,10 @@
         cat /sys/class/net/veth-vpnname/operstate) == "up" ]')
 
     machine_dash_in_name.wait_for_unit("vpn-nam.service")
+
+    machine_renamed_option.wait_for_unit("wg.service")
+    machine_renamed_option.succeed(
+      'ip netns exec wg ip route get 192.168.0.1 | grep -q "via 192.168.15.5"')
 
     machine_dash_in_name.succeed(
       '[ $(cat /sys/class/net/vpn-nam-br/operstate) == "up" ]')
