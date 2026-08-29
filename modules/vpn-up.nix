@@ -19,7 +19,9 @@
   utils = import ../lib/utils.nix {inherit lib;};
   inherit (utils) isValidIPv4;
 
-  routeDestinations = lib.unique (def.allowedEgress ++ def.accessibleFrom);
+  routeDestinations = builtins.filter
+    (x: x != def.bridgeAddress && x != def.bridgeAddressIPv6)
+    (lib.unique (def.allowedEgress ++ def.accessibleFrom));
 in
   pkgs.writeShellApplication {
     name = "${netnsName}-up";

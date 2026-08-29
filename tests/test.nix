@@ -44,6 +44,11 @@
           # two machines below. both back the end-to-end LAN egress pings.
           "192.168.1.0/24"
           "fdc0:1::/64"
+          # Including the bridge addresses (default values) to prove
+          # they do not produce self-referential routes that poison
+          # other resolutions, but also allow for routing back to the host.
+          "192.168.15.5"
+          "fd93:9701:1d00::1"
         ];
         # Test unconventional name for config file
         wireguardConfigFile = "/etc/wireguard/wireguardconfiguration.txt";
@@ -180,6 +185,14 @@
       'ip netns exec wg ip route get 172.16.0.99 | grep -q "via 192.168.15.5"')
     machine_dhcp.succeed(
       'ip netns exec wg ip route get fd25:9ab6:6134::99 | grep -q "via fd93:9701:1d00::1"')
+
+    # Bridge addresses should not exist in the routing table, they are
+    # inherently reachable via veth. A self-referential ipv6 route would prevent
+    # other ipv6 routes from being routable.
+    machine_dhcp.fail(
+      'ip netns exec wg ip -6 route show fd93:9701:1d00::1 | grep -q "fd93:9701:1d00::1 via fd93:9701:1d00::1"')
+    machine_dhcp.fail(
+      'ip netns exec wg ip route show 192.168.15.5 | grep -q "192.168.15.5 via 192.168.15.5"')
 
     egress_rules = machine_dhcp.succeed("ip netns exec wg iptables -S OUTPUT")
     assert egress_rules.index("-d 172.16.0.99/32") < egress_rules.index("--ctstate NEW -j DROP")
