@@ -215,20 +215,11 @@ in
         )
         def.allowedEgress}
 
-      ${concatMapStrings (
-          x:
-            if isValidIPv4 x
-            then ''
-              ip netns exec ${netnsName} iptables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-              ip netns exec ${netnsName} iptables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate NEW -j DROP
-            ''
-            else
-              optionalIPv6String ''
-                ip netns exec ${netnsName} ip6tables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-                ip netns exec ${netnsName} ip6tables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate NEW -j DROP
-              ''
-        )
-        def.accessibleFrom}
+      # Kill switch: only replies may leave via the veth (except allowedEgress)
+      ${addNetNSIPRules netnsName [
+        "-A OUTPUT -o veth-${netnsName} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT"
+        "-A OUTPUT -o veth-${netnsName} -m conntrack --ctstate NEW -j DROP"
+      ]}
 
       # Force all DNS traffic (port 53 TCP/UDP) through
       # the WireGuard interface via policy routing.
