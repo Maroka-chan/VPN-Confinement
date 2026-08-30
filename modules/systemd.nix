@@ -49,8 +49,8 @@ in {
                 NetworkNamespacePath = "/run/netns/${vpn}";
 
                 InaccessiblePaths = [
-                  "/run/nscd"
-                  "/run/resolvconf"
+                  "-/run/nscd"
+                  "-/run/resolvconf"
                 ];
 
                 BindReadOnlyPaths = [
