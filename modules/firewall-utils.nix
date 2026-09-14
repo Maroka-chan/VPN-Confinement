@@ -3,7 +3,7 @@
   optionalIPv6String,
 }: let
   inherit (lib) concatMapStrings;
-  inherit (builtins) foldl' toString concatStringsSep;
+  inherit (builtins) foldl' concatStringsSep;
 in rec {
   generatePreroutingRules = table: namespaceAddress: namespaceAddressIPv6: portMappings:
     concatStringsSep "\n" (
@@ -94,7 +94,7 @@ in rec {
       allowedPorts
     );
 
-  addIPRules = netns: argset:
+  addIPRules = argset:
     concatStringsSep "\n" (
       map (
         args:

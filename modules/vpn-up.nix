@@ -10,6 +10,7 @@
   };
   inherit
     (firewallUtils)
+    addIPRules
     addNetNSIPRules
     generatePortMapRules
     generatePreroutingRules
@@ -267,15 +268,18 @@ in
           -p tcp --dport 53 -j dns-leak
       ''}
 
+      # Add prerouting table
+      ${addIPRules [
+        "-t nat -N ${netnsName}-prerouting"
+        "-t nat -A PREROUTING -j ${netnsName}-prerouting"
+      ]}
+
       # Add prerouting rules
-      iptables -t nat -N ${netnsName}-prerouting
-      iptables -t nat -A PREROUTING -j ${netnsName}-prerouting
-      ${optionalIPv6String ''
-        ip6tables -t nat -N ${netnsName}-prerouting
-        ip6tables -t nat -A PREROUTING -j ${netnsName}-prerouting
-      ''}
       ${
-        generatePreroutingRules "${netnsName}-prerouting" def.namespaceAddress def.namespaceAddressIPv6
+        generatePreroutingRules
+        "${netnsName}-prerouting"
+        def.namespaceAddress
+        def.namespaceAddressIPv6
         def.portMappings
       }
 
@@ -285,12 +289,11 @@ in
       # discards them on arrival (rp_filter, no route back to the
       # source) or accepts them and fails to route its replies, so
       # connections never complete regardless.
-      iptables -t nat -N ${netnsName}-postrouting
-      iptables -t nat -A POSTROUTING -j ${netnsName}-postrouting
-      ${optionalIPv6String ''
-        ip6tables -t nat -N ${netnsName}-postrouting
-        ip6tables -t nat -A POSTROUTING -j ${netnsName}-postrouting
-      ''}
+      ${addIPRules [
+        "-t nat -N ${netnsName}-postrouting"
+        "-t nat -A POSTROUTING -j ${netnsName}-postrouting"
+      ]}
+
       ${concatMapStrings (
           x:
             if isValidIPv4 x
