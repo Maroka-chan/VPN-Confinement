@@ -26,6 +26,7 @@ in
     name = "${netnsName}-up";
     runtimeInputs = with pkgs; [
       bash
+      sysctl
       iproute2
       iptables
       unixtools.ping
@@ -74,13 +75,20 @@ in
         ip -n ${netnsName} address add "$addr" dev ${netnsName}0
       done
 
-      # Add DNS
+      # Clean up old netns config files
       rm -rf /etc/netns/${netnsName}
       mkdir -p /etc/netns/${netnsName}
+
+      # Generate resolv.conf
       IFS=","
       # shellcheck disable=SC2154
       for ns in $DNS; do
-        echo "nameserver $ns" >> /etc/netns/${netnsName}/resolv.conf
+        echo "nameserver $ns"
+      done > /etc/netns/${netnsName}/resolv.conf
+
+      # Setup DNS firewall rules
+      IFS=","
+      for ns in $DNS; do
         if [[ $ns == *"."* ]]; then
           ip netns exec ${netnsName} iptables \
             -I dns-fw -p udp -d "$ns" -j ACCEPT
@@ -91,6 +99,18 @@ in
       ''}
         fi
       done
+
+      # Generate nsswitch config
+      cat > /etc/netns/${netnsName}/nsswitch.conf << EOF
+      hosts: files dns
+      networks: files
+      EOF
+
+      # Generate hosts file
+      cat > /etc/netns/${netnsName}/hosts << EOF
+      127.0.0.1 localhost
+      ::1 localhost
+      EOF
 
       # Strips the config of wg-quick settings
       shopt -s extglob
@@ -191,10 +211,14 @@ in
             if isValidIPv4 x
             then ''
               ip -n ${netnsName} route add ${x} via ${def.bridgeAddress}
+              ip netns exec ${netnsName} iptables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+              ip netns exec ${netnsName} iptables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate NEW -j DROP
             ''
             else
               optionalIPv6String ''
                 ip -n ${netnsName} route add ${x} via ${def.bridgeAddressIPv6}
+                ip netns exec ${netnsName} ip6tables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+                ip netns exec ${netnsName} ip6tables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate NEW -j DROP
               ''
         )
         routeDestinations}
@@ -274,6 +298,52 @@ in
         "-t nat -A PREROUTING -j ${netnsName}-prerouting"
       ]}
 
+      # Force all DNS traffic (port 53 TCP/UDP) through
+      # the WireGuard interface via policy routing.
+      #
+      # Traffic on port 53 uses a separate routing table ('51820')
+      # so it always exits through the WireGuard interface.
+      # This prevents DNS lookups from passing through the veth pair when the
+      # nameserver appears in the main routing table. This in practice means
+      # that DNS is not leaked when a nameserver is specified in
+      # the 'accessibleFrom' option. As a failsafe, the 'dns-leak' chain drops
+      # any DNS traffic that falls through to the main table. This can happen
+      # if the WireGuard interface or the '51820' route is removed.
+
+      ip -n ${netnsName} route add default dev ${netnsName}0 table 51820
+
+      ip -n ${netnsName} rule add ipproto udp dport 53 lookup 51820 priority 100
+      ip -n ${netnsName} rule add ipproto tcp dport 53 lookup 51820 priority 100
+
+      # Guard against DNS leaks when routing table ('51820') is not present.
+      # Monitor dropped packets with:
+      #   sudo ip netns exec ${netnsName} iptables -L dns-leak -v -n
+      ip netns exec ${netnsName} iptables -N dns-leak
+
+      ip netns exec ${netnsName} iptables -A dns-leak \
+        -m limit --limit 1/min -j LOG --log-prefix "dns-leak: "
+      ip netns exec ${netnsName} iptables -A dns-leak -j DROP
+
+      ip netns exec ${netnsName} iptables -I OUTPUT 1 -o veth-${netnsName} \
+        -p udp --dport 53 -j dns-leak
+      ip netns exec ${netnsName} iptables -I OUTPUT 1 -o veth-${netnsName} \
+        -p tcp --dport 53 -j dns-leak
+
+      ${optionalIPv6String ''
+        ip -6 -n ${netnsName} route add default dev ${netnsName}0 table 51820
+        ip -6 -n ${netnsName} rule add ipproto udp dport 53 lookup 51820 priority 100
+        ip -6 -n ${netnsName} rule add ipproto tcp dport 53 lookup 51820 priority 100
+
+        ip netns exec ${netnsName} ip6tables -N dns-leak
+        ip netns exec ${netnsName} ip6tables -A dns-leak \
+          -m limit --limit 1/min -j LOG --log-prefix "dns-leak6: "
+        ip netns exec ${netnsName} ip6tables -A dns-leak -j DROP
+        ip netns exec ${netnsName} ip6tables -I OUTPUT 1 -o veth-${netnsName} \
+          -p udp --dport 53 -j dns-leak
+        ip netns exec ${netnsName} ip6tables -I OUTPUT 1 -o veth-${netnsName} \
+          -p tcp --dport 53 -j dns-leak
+      ''}
+
       # Add prerouting rules
       ${
         generatePreroutingRules
@@ -312,5 +382,9 @@ in
 
       # Add VPN INPUT rules
       ${generateAllowedPortRules netnsName "${netnsName}0" def.openVPNPorts}
+
+      # Allow unprivileged ICMP sockets.
+      # This is the default on the host, so we just match it to make ping work.
+      ip netns exec ${netnsName} sysctl -w net.ipv4.ping_group_range="0 2147483647"
     '';
   }
