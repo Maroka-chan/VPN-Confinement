@@ -74,11 +74,22 @@
     machine_dhcp = createNode [
       basicNetns
       {
+        networking.interfaces.eth1.ipv4.addresses = [
+          {
+            address = "192.168.0.3";
+            prefixLength = 24;
+          }
+        ];
+
         # static ULA on the test vlan, used as the masquerade source for
         # the v6 LAN egress ping
         networking.interfaces.eth1.ipv6.addresses = [
           {
             address = "fdc0:1::3";
+            prefixLength = 64;
+          }
+          {
+            address = "fd25:9ab6:6133::3";
             prefixLength = 64;
           }
         ];
@@ -152,6 +163,23 @@
       {
         # Tests that the module does not fail even when
         # no vpnnamespaces are defined.
+        #
+        # The additional addresses make this machine a reachable LAN peer
+        # outside allowedEgress for the kill switch tests below.
+        networking.interfaces.eth1 = {
+          ipv4.addresses = [
+            {
+              address = "192.168.0.6";
+              prefixLength = 24;
+            }
+          ];
+          ipv6.addresses = [
+            {
+              address = "fd25:9ab6:6133::6";
+              prefixLength = 64;
+            }
+          ];
+        };
       }
     ];
 
@@ -214,6 +242,55 @@
       f"ip netns exec wg ping -c 1 -W 2 {peer_v4}", timeout=60)
     machine_dhcp.wait_until_succeeds(
       "ip netns exec wg ping -c 1 -W 2 fdc0:1::6", timeout=60)
+
+    def kill_switch_packets(firewall):
+        rules = machine_dhcp.succeed(
+            f"ip netns exec wg {firewall} -L OUTPUT -v -n -x"
+        )
+        matches = [
+            fields
+            for line in rules.splitlines()
+            if len(fields := line.split()) >= 7
+            and fields[2] == "DROP"
+            and fields[6] == "veth-wg"
+        ]
+        assert len(matches) == 1, rules
+        return int(matches[0][0])
+
+    # Give the blocked LAN peer an explicit return path. A failed ping can
+    # therefore be attributed to the namespace firewall rather than routing.
+    machine_no_namespaces.succeed(
+      "ip route add 192.168.15.0/24 via 192.168.0.3")
+    machine_no_namespaces.succeed(
+      "ip -6 route add fd93:9701:1d00::/64 via fd25:9ab6:6133::3")
+
+    with subtest("IPv4 LAN egress outside allowedEgress is blocked"):
+        machine_dhcp.succeed("ip netns exec wg iptables -Z OUTPUT")
+        machine_dhcp.fail(
+          "ip netns exec wg ping -c 1 -W 2 192.168.0.6")
+        assert kill_switch_packets("iptables") > 0
+
+    with subtest("IPv4 LAN peer is otherwise reachable"):
+        machine_dhcp.succeed(
+          "ip netns exec wg iptables -I OUTPUT 1 -o veth-wg -d 192.168.0.6 -j ACCEPT")
+        machine_dhcp.wait_until_succeeds(
+          "ip netns exec wg ping -c 1 -W 2 192.168.0.6", timeout=60)
+        machine_dhcp.succeed(
+          "ip netns exec wg iptables -D OUTPUT -o veth-wg -d 192.168.0.6 -j ACCEPT")
+
+    with subtest("IPv6 LAN egress outside allowedEgress is blocked"):
+        machine_dhcp.succeed("ip netns exec wg ip6tables -Z OUTPUT")
+        machine_dhcp.fail(
+          "ip netns exec wg ping -c 1 -W 2 fd25:9ab6:6133::6")
+        assert kill_switch_packets("ip6tables") > 0
+
+    with subtest("IPv6 LAN peer is otherwise reachable"):
+        machine_dhcp.succeed(
+          "ip netns exec wg ip6tables -I OUTPUT 1 -o veth-wg -d fd25:9ab6:6133::6 -j ACCEPT")
+        machine_dhcp.wait_until_succeeds(
+          "ip netns exec wg ping -c 1 -W 2 fd25:9ab6:6133::6", timeout=60)
+        machine_dhcp.succeed(
+          "ip netns exec wg ip6tables -D OUTPUT -o veth-wg -d fd25:9ab6:6133::6 -j ACCEPT")
 
     machine_max_name_length.wait_for_unit("vpnname.service")
 
