@@ -32,6 +32,11 @@ in
       wireguard-tools
     ];
     text = ''
+      # Warn if config is world readable
+      if (( ($(stat -c '0%#a' "${def.wireguardConfigFile}") & 0007) != 0 )); then
+        echo "Warning: '${def.wireguardConfigFile}' is world readable" >&2
+      fi
+
       ip netns add ${netnsName}
 
       # Set up netns firewall
