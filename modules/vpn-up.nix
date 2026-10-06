@@ -212,6 +212,42 @@ in
         ip -6 -n ${netnsName} route add default dev ${netnsName}0
       ''}
 
+      # Set MTU
+      mtu=2147483647
+      if [[ -n $MTU ]]; then
+        mtu="$MTU"
+      else
+        while read -r _ endpoint; do
+          [[ $endpoint =~ ^\[?([a-z0-9:.]+)\]?:[0-9]+$ ]] || continue
+          output="$(ip -n ${netnsName} route get "''${BASH_REMATCH[1]}" || true)"
+          if [[ $output =~ mtu\ ([0-9]+) ]]; then
+            candidate="''${BASH_REMATCH[1]}"
+          elif [[ $output =~ dev\ ([^ ]+) ]] && \
+               link_out="$(ip -n ${netnsName} link show dev "''${BASH_REMATCH[1]}")" && \
+               [[ $link_out =~ mtu\ ([0-9]+) ]]; then
+            candidate="''${BASH_REMATCH[1]}"
+          else
+            continue
+          fi
+          (( candidate < mtu )) && mtu="$candidate"
+        done < <(ip netns exec ${netnsName} wg show ${netnsName}0 endpoints)
+
+        if [[ $mtu -eq 2147483647 ]]; then
+          output="$(ip -n ${netnsName} route show default || true)"
+          if [[ $output =~ mtu\ ([0-9]+) ]]; then
+            mtu="''${BASH_REMATCH[1]}"
+          elif [[ $output =~ dev\ ([^ ]+) ]] && \
+               link_out="$(ip -n ${netnsName} link show dev "''${BASH_REMATCH[1]}")" && \
+               [[ $link_out =~ mtu\ ([0-9]+) ]]; then
+            mtu="''${BASH_REMATCH[1]}"
+          fi
+        fi
+
+        [[ $mtu -gt 0 && $mtu -lt 2147483647 ]] || mtu=1500
+        mtu=$(( mtu - 80 ))
+      fi
+      ip -n ${netnsName} link set mtu "$mtu" up dev ${netnsName}0
+
       # Routes for every destination reachable via the bridge, from both
       # accessibleFrom and allowedEgress. Deduplicated so a range appearing
       # in both lists cannot fail the script, while a genuinely conflicting
