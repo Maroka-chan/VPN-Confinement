@@ -8,6 +8,7 @@
     path
     port
     enum
+    bool
     ;
 in {
   options = {
@@ -183,6 +184,15 @@ in {
       example = "/secret/wg0.conf";
       description = ''
         Path to a wg-quick config file.
+      '';
+    };
+
+    disableConnectivityCheck = mkOption {
+      type = bool;
+      default = false;
+      description = ''
+        Disable the startup connectivity check that pings the
+        wireguard endpoint before bringing up the namespace.
       '';
     };
   };

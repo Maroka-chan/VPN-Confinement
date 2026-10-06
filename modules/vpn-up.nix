@@ -24,13 +24,14 @@
 in
   pkgs.writeShellApplication {
     name = "${netnsName}-up";
-    runtimeInputs = with pkgs; [
-      bash
-      iproute2
-      iptables
-      unixtools.ping
-      wireguard-tools
-    ];
+    runtimeInputs = with pkgs;
+      [
+        bash
+        iproute2
+        iptables
+        wireguard-tools
+      ]
+      ++ lib.optional (!def.disableConnectivityCheck) unixtools.ping;
     text = ''
       ip netns add ${netnsName}
 
@@ -115,33 +116,35 @@ in
         echo "$WG_CONFIG"
       }
 
-      # The wireguard endpoint is an IP address with a port. Extract the address alone, and test for
-      # connectivity using ping.
-      # shellcheck disable=SC2154
-      if [[ $Endpoint =~ ^\[?([^]]+)\]?:[0-9]+$ ]]; then
-        EndpointIP="''${BASH_REMATCH[1]}"
-      else
-        echo "invalid endpoint format: '$Endpoint'" >&2
-        exit 1
-      fi
+      ${lib.optionalString (!def.disableConnectivityCheck) ''
+        # The wireguard endpoint is an IP address with a port. Extract the address alone, and test for
+        # connectivity using ping.
+        # shellcheck disable=SC2154
+        if [[ $Endpoint =~ ^\[?([^]]+)\]?:[0-9]+$ ]]; then
+          EndpointIP="''${BASH_REMATCH[1]}"
+        else
+          echo "invalid endpoint format: '$Endpoint'" >&2
+          exit 1
+        fi
 
-      attempt=1
-      max_retries=5
-      success=false
-      echo -n "Waiting for wireguard endpoint '$EndpointIP' to be reachable..."
-      while [[ $attempt -le $max_retries ]]; do
-        ping -c 1 "$EndpointIP" > /dev/null 2>&1 && { success=true; break; }
-        sleep 1
-        attempt=$((attempt + 1))
-      done
+        attempt=1
+        max_retries=5
+        success=false
+        echo -n "Waiting for wireguard endpoint '$EndpointIP' to be reachable..."
+        while [[ $attempt -le $max_retries ]]; do
+          ping -c 1 "$EndpointIP" > /dev/null 2>&1 && { success=true; break; }
+          sleep 1
+          attempt=$((attempt + 1))
+        done
 
-      if ! $success; then
-        echo # The last echo did not print a newline, print one now
-        echo "failed to reach '$EndpointIP' after $max_retries attempts" >&2
-        exit 1
-      else
-        echo " success!"
-      fi
+        if ! $success; then
+          echo # The last echo did not print a newline, print one now
+          echo "failed to reach '$EndpointIP' after $max_retries attempts" >&2
+          exit 1
+        else
+          echo " success!"
+        fi
+      ''}
 
       # Set wireguard config
       ip netns exec ${netnsName} \
