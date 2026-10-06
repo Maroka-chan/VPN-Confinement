@@ -43,7 +43,7 @@
       };
     };
 in {
-  imports = [./systemd.nix] ++ [(mkRenamedOptionModule ["vpnnamespaces"] ["vpnNamespaces"])];
+  imports = [./systemd.nix ./vpn-tunnel.nix] ++ [(mkRenamedOptionModule ["vpnnamespaces"] ["vpnNamespaces"])];
 
   options.vpnNamespaces = mkOption {
     type = attrsOf (submodule [(import ./options.nix)]);
