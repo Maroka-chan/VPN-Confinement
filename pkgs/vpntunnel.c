@@ -1,0 +1,232 @@
+#define _GNU_SOURCE
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sched.h>
+#include <sys/mount.h>
+#include <sys/prctl.h>
+#include <sys/stat.h>
+#include <sys/capability.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <net/if.h>
+#include <linux/capability.h>
+
+#include <unsecvars.h>
+
+#define UNSECURE_ENVVARS_TUNABLES \
+  "MALLOC_CHECK_\0" \
+  "MALLOC_TOP_PAD_\0" \
+  "MALLOC_PERTURB_\0" \
+  "MALLOC_MMAP_THRESHOLD_\0" \
+  "MALLOC_TRIM_THRESHOLD_\0" \
+  "MALLOC_MMAP_MAX_\0" \
+  "MALLOC_ARENA_MAX\0" \
+  "MALLOC_ARENA_TEST\0"
+
+#define NETNS_DIR "/var/run/netns"
+#define NETNS_CONF_DIR "/etc/netns"
+#define NETNS_MAX_FILENAME 14  // "nsswitch.conf"
+
+// "/etc/netns" + "/" + name + "/" + "nsswitch.conf" + '\0'
+#define NETNS_PATH_MAX (sizeof(NETNS_CONF_DIR) + 1 + IFNAMSIZ + NETNS_MAX_FILENAME + 1)
+
+static int do_mount(const char *src, const char *dst, const char *type, unsigned long flags) {
+    if (mount(src, dst, type, flags, NULL) != 0) {
+        fprintf(stderr, "mount failed: src=%s, dst=%s: %s\n", src, dst, strerror(errno));
+        return -1;
+    }
+    return 0;
+}
+
+static void mask_path_if_exists(const char *path) {
+    struct stat st;
+
+    if (stat(path, &st) == 0) {
+        // Path exists, so mount MUST succeed
+        if (S_ISDIR(st.st_mode)) {
+            if (mount("tmpfs", path, "tmpfs", 0, "size=0") != 0) {
+                fprintf(stderr, "Failed to mask directory %s: %s\n", path, strerror(errno));
+                exit(1);
+            }
+            if (mount(NULL, path, NULL, MS_REMOUNT | MS_RDONLY | MS_BIND, NULL) != 0) {
+                fprintf(stderr, "Failed to remount %s read-only: %s\n", path, strerror(errno));
+                exit(1);
+            }
+        } else {
+            if (mount("/dev/null", path, NULL, MS_BIND, NULL) != 0) {
+                fprintf(stderr, "Failed to mask file %s: %s\n", path, strerror(errno));
+                exit(1);
+            }
+            if (mount(NULL, path, NULL, MS_REMOUNT | MS_RDONLY | MS_BIND, NULL) != 0) {
+                fprintf(stderr, "Failed to remount %s read-only: %s\n", path, strerror(errno));
+                exit(1);
+            }
+        }
+    }
+    // Path doesn't exist - OK to ignore because of MS_PRIVATE
+}
+
+static void drop_privileges(void) {
+    // Drop all capabilities before exec, preserving only ambient capabilities.
+    //
+    // This ensures vpntunnel acts as a transparent wrapper:
+    // - Drops vpntunnel's own CAP_SYS_ADMIN (from file caps or root)
+    // - Preserves ambient capabilities when vpntunnel is run without file caps.
+    // - Leaves bounding set intact (to preserve the set of caps the wrapped program can acquire)
+    //
+    // IMPORTANT: Ambient capabilities only work when vpntunnel has NO file
+    // capabilities. The kernel clears ambient caps when exec'ing a binary
+    // with file capabilities (security.capability xattr).
+    //
+    // For binaries needing ambient capabilities, use the unwrapped
+    // vpntunnel from the Nix store, NOT /run/wrappers/bin/vpntunnel.
+    // This requires CAP_SYS_ADMIN to be specified as an ambient capability.
+    // Be careful as this causes the cap to be inherited by the wrapped binary!
+
+    // Get current ambient capabilities
+    cap_value_t ambient_caps[CAP_LAST_CAP + 1];
+    int ambient_count = 0;
+
+    for (int i = 0; i <= CAP_LAST_CAP; i++) {
+        if (prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_IS_SET, i, 0, 0) == 1) {
+            ambient_caps[ambient_count++] = i;
+        }
+    }
+
+    // Set capabilities to only what was ambient (explicitly granted)
+    cap_t caps = cap_get_proc();
+    if (caps == NULL) {
+        perror("cap_get_proc");
+        exit(1);
+    }
+
+    // Clear only permitted, effective, inheritable (NOT bounding set)
+    cap_clear_flag(caps, CAP_PERMITTED);
+    cap_clear_flag(caps, CAP_EFFECTIVE);
+    cap_clear_flag(caps, CAP_INHERITABLE);
+    // Bounding set stays intact - allows exec'd programs to get file caps
+
+    if (ambient_count > 0) {
+        // Restore only the ambient capabilities
+        cap_set_flag(caps, CAP_PERMITTED, ambient_count, ambient_caps, CAP_SET);
+        cap_set_flag(caps, CAP_EFFECTIVE, ambient_count, ambient_caps, CAP_SET);
+        cap_set_flag(caps, CAP_INHERITABLE, ambient_count, ambient_caps, CAP_SET);
+    }
+
+    if (cap_set_proc(caps) != 0) {
+        perror("cap_set_proc");
+        exit(1);
+    }
+
+    cap_free(caps);
+
+    // Re-raise ambient caps so they survive exec
+    for (int i = 0; i < ambient_count; i++) {
+        if (prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_RAISE, ambient_caps[i], 0, 0) != 0) {
+            perror("prctl PR_CAP_AMBIENT_RAISE");
+            exit(1);
+        }
+    }
+}
+
+int main(int argc, char *argv[]) {
+    if (argc < 3) {
+        fprintf(stderr, "Usage: %s <namespace> <command> [args...]\n", argv[0]);
+        return 1;
+    }
+
+    // Sanitize environment variables (before any other operations)
+    for (char *unsec = UNSECURE_ENVVARS_TUNABLES UNSECURE_ENVVARS;
+         *unsec;
+         unsec = strchr(unsec, 0) + 1) {
+        unsetenv(unsec);
+    }
+
+    const char *ns = argv[1];
+
+    // Validate namespace name length
+    if (strlen(ns) >= IFNAMSIZ) {
+        fprintf(stderr, "Error: namespace name too long (max %d characters)\n", IFNAMSIZ - 1);
+        return 1;
+    }
+
+    // Validate no path traversal
+    if (strchr(ns, '/') != NULL || strcmp(ns, ".") == 0 || strcmp(ns, "..") == 0) {
+        fprintf(stderr, "Error: invalid namespace name\n");
+        return 1;
+    }
+
+    // Enter network namespace
+    char netns_path[sizeof(NETNS_DIR) + IFNAMSIZ];
+    snprintf(netns_path, sizeof(netns_path), "%s/%s", NETNS_DIR, ns);
+
+    int nsfd = open(netns_path, O_RDONLY);
+    if (nsfd < 0) {
+        perror("open netns");
+        return 1;
+    }
+
+    if (setns(nsfd, CLONE_NEWNET) != 0) {
+        perror("setns");
+        close(nsfd);
+        return 1;
+    }
+    close(nsfd);
+
+    // Create private mount namespace
+    if (unshare(CLONE_NEWNS) != 0) {
+        perror("unshare CLONE_NEWNS");
+        return 1;
+    }
+
+    // Don't propagate mounts to/from parent
+    if (mount("", "/", "", MS_PRIVATE | MS_REC, NULL) != 0) {
+        perror("mount --make-rprivate");
+        return 1;
+    }
+
+    // DNS leak prevention by masking system DNS service paths.
+    // Similar to systemd InaccessiblePaths, but more robust: MS_PRIVATE
+    // ensures these paths cannot become accessible even if the host adds
+    // or removes mounts after we enter the namespace.
+    mask_path_if_exists("/run/nscd");
+    mask_path_if_exists("/run/resolvconf");
+    mask_path_if_exists("/run/systemd/resolve/io.systemd.Resolve");
+    mask_path_if_exists("/run/systemd/resolve/stub-resolv.conf");
+    mask_path_if_exists("/run/systemd/resolve/resolv.conf");
+    mask_path_if_exists("/run/systemd/resolve/netif");
+    // mDNS can leak local network queries
+    mask_path_if_exists("/run/avahi-daemon");
+    mask_path_if_exists("/var/run/avahi-daemon");
+    // If you use LDAP/enterprise authentication
+    mask_path_if_exists("/var/run/nslcd");
+    mask_path_if_exists("/var/run/sssd");
+
+    // Bind-mount netns-specific files (same as ip netns exec does).
+    // More strict because we exit the program if any of the files are not
+    // present, as we require them for configuring DNS and preventing leaks.
+    char buf[NETNS_PATH_MAX];
+
+    snprintf(buf, sizeof(buf), "/etc/netns/%s/resolv.conf", ns);
+    if (do_mount(buf, "/etc/resolv.conf", NULL, MS_BIND) != 0) {
+        return 1;
+    }
+
+    snprintf(buf, sizeof(buf), "/etc/netns/%s/nsswitch.conf", ns);
+    if (do_mount(buf, "/etc/nsswitch.conf", NULL, MS_BIND) != 0) {
+        return 1;
+    }
+
+    snprintf(buf, sizeof(buf), "/etc/netns/%s/hosts", ns);
+    if (do_mount(buf, "/etc/hosts", NULL, MS_BIND) != 0) {
+        return 1;
+    }
+
+    // Drop all capabilities before exec
+    drop_privileges();
+    execvp(argv[2], &argv[2]);
+    perror("execvp");
+    return 1;
+}

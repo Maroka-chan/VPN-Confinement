@@ -26,6 +26,7 @@ in
     name = "${netnsName}-up";
     runtimeInputs = with pkgs; [
       bash
+      sysctl
       iproute2
       iptables
       unixtools.ping
@@ -122,7 +123,7 @@ in
         ip -n ${netnsName} address add "$addr" dev ${netnsName}0
       done
 
-      # Add DNS
+      # Clean up old netns config files
       rm -rf /etc/netns/${netnsName}
       mkdir -p /etc/netns/${netnsName}
 
@@ -144,6 +145,18 @@ in
       ''}
         fi
       done
+
+      # Generate nsswitch config
+      cat > /etc/netns/${netnsName}/nsswitch.conf << EOF
+      hosts: files dns
+      networks: files
+      EOF
+
+      # Generate hosts file
+      cat > /etc/netns/${netnsName}/hosts << EOF
+      127.0.0.1 localhost
+      ::1 localhost
+      EOF
 
       # The wireguard endpoint is an IP address with a port. Extract the address alone, and test for
       # connectivity using ping.
@@ -379,5 +392,9 @@ in
 
       # Add VPN INPUT rules
       ${generateAllowedPortRules netnsName "${netnsName}0" def.openVPNPorts}
+
+      # Allow unprivileged ICMP sockets.
+      # This is the default on the host, so we just match it to make ping work.
+      ip netns exec ${netnsName} sysctl -w net.ipv4.ping_group_range="0 2147483647"
     '';
   }
