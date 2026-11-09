@@ -10,6 +10,7 @@
   };
   inherit
     (firewallUtils)
+    addIPRules
     addNetNSIPRules
     generatePortMapRules
     generatePreroutingRules
@@ -31,6 +32,11 @@ in
       wireguard-tools
     ];
     text = ''
+      # Warn if config is world readable
+      if (( ($(stat -c '0%#a' "${def.wireguardConfigFile}") & 0007) != 0 )); then
+        echo "Warning: '${def.wireguardConfigFile}' is world readable" >&2
+      fi
+
       ip netns add ${netnsName}
 
       # Set up netns firewall
@@ -55,31 +61,79 @@ in
       ip link add ${netnsName}0 type wireguard
       ip link set ${netnsName}0 netns ${netnsName}
 
-      # Parse wireguard INI config file
-      # shellcheck disable=SC1090
-      source <( \
-        grep -e "DNS" -e "Address" -e "Endpoint" ${def.wireguardConfigFile} \
-          | tr -d ' ' \
-      )
+      # Strips the config of wg-quick settings
+      WG_CONFIG=""
+      ADDRESSES=()
+      DNS_SERVERS=()
+      DNS_SEARCH=()
+      ENDPOINT=""
+      MTU=""
+      interface_section=0
+      shopt -s nocasematch extglob
+      while IFS= read -r line || [[ -n $line ]]; do
+        stripped="''${line%%#*}"
+        key="''${stripped%%=*}"
+        key="''${key##*([[:space:]])}"; key="''${key%%*([[:space:]])}"
+        value="''${stripped#*=}"
+        value="''${value##*([[:space:]])}"; value="''${value%%*([[:space:]])}"
+
+        [[ $key == \[*\] ]] && interface_section=0
+        [[ $key == "[Interface]" ]] && interface_section=1
+
+        # Extract Endpoint from [Peer] section
+        case "$key" in
+          Endpoint)
+            ENDPOINT="$value"
+            ;;
+        esac
+
+        # Strip wg-quick settings from [Interface] section
+        if (( interface_section )); then
+          # shellcheck disable=SC2206
+          case "$key" in
+            Address) ADDRESSES+=( ''${value//,/ } ); continue ;;
+            MTU) MTU="$value"; continue ;;
+            DNS)
+              for v in ''${value//,/ }; do
+                [[ $v =~ (^[0-9.]+$)|(^.*:.*$) ]] && DNS_SERVERS+=( "$v" ) || DNS_SEARCH+=( "$v" )
+              done
+              continue
+              ;;
+            Table|PreUp|PreDown|PostUp|PostDown|SaveConfig)
+              # Strip these settings but don't store them
+              continue
+              ;;
+          esac
+        fi
+
+        WG_CONFIG+="$line"$'\n'
+      done < "${def.wireguardConfigFile}"
+      shopt -u nocasematch extglob
 
       # Throw error when DNS is unset
-      : "''${DNS:?WireGuard configuration error: missing DNS field.
-      Please set DNS=<vpn_provided_dns> before continuing.}"
+      if [[ ''${#DNS_SERVERS[@]} -eq 0 ]]; then
+        echo "WireGuard configuration error: missing DNS field." >&2
+        echo "Please set DNS=<vpn_provided_dns> before continuing." >&2
+        exit 1
+      fi
 
       # Add Addresses
-      IFS=","
-      # shellcheck disable=SC2154
-      for addr in $Address; do
+      for addr in "''${ADDRESSES[@]}"; do
         ip -n ${netnsName} address add "$addr" dev ${netnsName}0
       done
 
       # Add DNS
       rm -rf /etc/netns/${netnsName}
       mkdir -p /etc/netns/${netnsName}
-      IFS=","
-      # shellcheck disable=SC2154
-      for ns in $DNS; do
-        echo "nameserver $ns" >> /etc/netns/${netnsName}/resolv.conf
+
+      # Generate resolv.conf
+      {
+        printf 'nameserver %s\n' "''${DNS_SERVERS[@]}"
+        [[ ''${#DNS_SEARCH[@]} -eq 0 ]] || printf 'search %s\n' "''${DNS_SEARCH[*]}"
+      } > /etc/netns/${netnsName}/resolv.conf
+
+      # Setup DNS firewall rules
+      for ns in "''${DNS_SERVERS[@]}"; do
         if [[ $ns == *"."* ]]; then
           ip netns exec ${netnsName} iptables \
             -I dns-fw -p udp -d "$ns" -j ACCEPT
@@ -91,39 +145,17 @@ in
         fi
       done
 
-      # Strips the config of wg-quick settings
-      shopt -s extglob
-      strip_wgquick_config() {
-        CONFIG_FILE="$1"
-        [[ -e $CONFIG_FILE ]] \
-          || (echo "'$CONFIG_FILE' does not exist" >&2 && exit 1)
-        CONFIG_FILE="$(readlink -f "$CONFIG_FILE")"
-        local interface_section=0
-        while read -r line || [[ -n $line ]]; do
-          key=''${line//=/ }
-          [[ $key == "["* ]] && interface_section=0
-          [[ $key == "[Interface]" ]] && interface_section=1
-          if [ $interface_section -eq 1 ] && [[ $key =~ \
-            Address|MTU|DNS|Table|PreUp|PreDown|PostUp|PostDown|SaveConfig \
-          ]]
-          then
-            continue
-          fi
-          WG_CONFIG+="$line"$'\n'
-        done < "$CONFIG_FILE"
-        echo "$WG_CONFIG"
-      }
-
       # The wireguard endpoint is an IP address with a port. Extract the address alone, and test for
       # connectivity using ping.
       # shellcheck disable=SC2154
-      if [[ $Endpoint =~ ^\[?([^]]+)\]?:[0-9]+$ ]]; then
+      if [[ $ENDPOINT =~ ^\[?([^]]+)\]?:[0-9]+$ ]]; then
         EndpointIP="''${BASH_REMATCH[1]}"
       else
-        echo "invalid endpoint format: '$Endpoint'" >&2
+        echo "invalid endpoint format: '$ENDPOINT'" >&2
         exit 1
       fi
 
+      # Wait for endpoint to be reachable
       attempt=1
       max_retries=5
       success=false
@@ -145,7 +177,7 @@ in
       # Set wireguard config
       ip netns exec ${netnsName} \
         wg setconf ${netnsName}0 \
-          <(strip_wgquick_config ${def.wireguardConfigFile})
+          <(printf '%s' "$WG_CONFIG")
 
       ip -n ${netnsName} link set ${netnsName}0 up
 
@@ -179,6 +211,42 @@ in
       ${optionalIPv6String ''
         ip -6 -n ${netnsName} route add default dev ${netnsName}0
       ''}
+
+      # Set MTU
+      mtu=2147483647
+      if [[ -n $MTU ]]; then
+        mtu="$MTU"
+      else
+        while read -r _ endpoint; do
+          [[ $endpoint =~ ^\[?([a-z0-9:.]+)\]?:[0-9]+$ ]] || continue
+          output="$(ip -n ${netnsName} route get "''${BASH_REMATCH[1]}" || true)"
+          if [[ $output =~ mtu\ ([0-9]+) ]]; then
+            candidate="''${BASH_REMATCH[1]}"
+          elif [[ $output =~ dev\ ([^ ]+) ]] && \
+               link_out="$(ip -n ${netnsName} link show dev "''${BASH_REMATCH[1]}")" && \
+               [[ $link_out =~ mtu\ ([0-9]+) ]]; then
+            candidate="''${BASH_REMATCH[1]}"
+          else
+            continue
+          fi
+          (( candidate < mtu )) && mtu="$candidate"
+        done < <(ip netns exec ${netnsName} wg show ${netnsName}0 endpoints)
+
+        if [[ $mtu -eq 2147483647 ]]; then
+          output="$(ip -n ${netnsName} route show default || true)"
+          if [[ $output =~ mtu\ ([0-9]+) ]]; then
+            mtu="''${BASH_REMATCH[1]}"
+          elif [[ $output =~ dev\ ([^ ]+) ]] && \
+               link_out="$(ip -n ${netnsName} link show dev "''${BASH_REMATCH[1]}")" && \
+               [[ $link_out =~ mtu\ ([0-9]+) ]]; then
+            mtu="''${BASH_REMATCH[1]}"
+          fi
+        fi
+
+        [[ $mtu -gt 0 && $mtu -lt 2147483647 ]] || mtu=1500
+        mtu=$(( mtu - 80 ))
+      fi
+      ip -n ${netnsName} link set mtu "$mtu" up dev ${netnsName}0
 
       # Routes for every destination reachable via the bridge, from both
       # allowedIngress and allowedEgress. Deduplicated so a range appearing
@@ -215,20 +283,11 @@ in
         )
         def.allowedEgress}
 
-      ${concatMapStrings (
-          x:
-            if isValidIPv4 x
-            then ''
-              ip netns exec ${netnsName} iptables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-              ip netns exec ${netnsName} iptables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate NEW -j DROP
-            ''
-            else
-              optionalIPv6String ''
-                ip netns exec ${netnsName} ip6tables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-                ip netns exec ${netnsName} ip6tables -A OUTPUT -o veth-${netnsName} -m conntrack --ctstate NEW -j DROP
-              ''
-        )
-        def.allowedIngress}
+      # Kill switch: only replies may leave via the veth (except allowedEgress)
+      ${addNetNSIPRules netnsName [
+        "-A OUTPUT -o veth-${netnsName} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT"
+        "-A OUTPUT -o veth-${netnsName} -m conntrack --ctstate NEW -j DROP"
+      ]}
 
       # Force all DNS traffic (port 53 TCP/UDP) through
       # the WireGuard interface via policy routing.
@@ -276,15 +335,18 @@ in
           -p tcp --dport 53 -j dns-leak
       ''}
 
+      # Add prerouting table
+      ${addIPRules [
+        "-t nat -N ${netnsName}-prerouting"
+        "-t nat -A PREROUTING -j ${netnsName}-prerouting"
+      ]}
+
       # Add prerouting rules
-      iptables -t nat -N ${netnsName}-prerouting
-      iptables -t nat -A PREROUTING -j ${netnsName}-prerouting
-      ${optionalIPv6String ''
-        ip6tables -t nat -N ${netnsName}-prerouting
-        ip6tables -t nat -A PREROUTING -j ${netnsName}-prerouting
-      ''}
       ${
-        generatePreroutingRules "${netnsName}-prerouting" def.namespaceAddress def.namespaceAddressIPv6
+        generatePreroutingRules
+        "${netnsName}-prerouting"
+        def.namespaceAddress
+        def.namespaceAddressIPv6
         def.portMappings
       }
 
@@ -294,12 +356,11 @@ in
       # discards them on arrival (rp_filter, no route back to the
       # source) or accepts them and fails to route its replies, so
       # connections never complete regardless.
-      iptables -t nat -N ${netnsName}-postrouting
-      iptables -t nat -A POSTROUTING -j ${netnsName}-postrouting
-      ${optionalIPv6String ''
-        ip6tables -t nat -N ${netnsName}-postrouting
-        ip6tables -t nat -A POSTROUTING -j ${netnsName}-postrouting
-      ''}
+      ${addIPRules [
+        "-t nat -N ${netnsName}-postrouting"
+        "-t nat -A POSTROUTING -j ${netnsName}-postrouting"
+      ]}
+
       ${concatMapStrings (
           x:
             if isValidIPv4 x
