@@ -48,9 +48,12 @@
         # Test unconventional name for config file
         wireguardConfigFile = "/etc/wireguard/wireguardconfiguration.txt";
         portMappings = [
+          # bare port, coerced to a symmetric tcp mapping
+          9091
+          # the explicit form still works
           {
-            from = 9091;
-            to = 9091;
+            from = 9092;
+            to = 9092;
           }
         ];
         # Distinct ports per protocol, so a rule with the wrong
@@ -259,6 +262,12 @@
             assert "-A INPUT -i wg0 -p udp -m udp --dport 60730 -j ACCEPT" in rules, rules
             assert "-p udp -m udp --dport 60729" not in rules, rules
             assert "-p tcp -m tcp --dport 60730" not in rules, rules
+
+    with subtest("a bare port in portMappings becomes a symmetric tcp mapping"):
+        rules = machine_dhcp.succeed("iptables -t nat -S wg-prerouting")
+        assert "-p tcp -m tcp --dport 9091 -j DNAT --to-destination 192.168.15.1:9091" in rules, rules
+        assert "-p udp -m udp --dport 9091" not in rules, rules
+        assert "-p tcp -m tcp --dport 9092 -j DNAT --to-destination 192.168.15.1:9092" in rules, rules
 
     # allowedEgress installs a route via the bridge and an accept that
     # precedes the veth NEW drop, for v4 and v6

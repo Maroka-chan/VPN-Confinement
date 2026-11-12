@@ -52,11 +52,14 @@ vpnNamespaces.<name> = { # The name is limited to 7 characters
   allowedEgress = [ # Destinations the namespace may reach outside the tunnel
     "<ip or subnet>"
   ];
-  portMappings = [{
+  portMappings = [
+    <port> # Coerced to { from = <port>; to = <port>; protocol = "tcp"; }
+    {
       from = <port on host>;
       to = <port in VPN network namespace>;
       protocol = "<transport protocol>"; # protocol = "tcp" (default), "udp", or "both"
-  }];
+    }
+  ];
   vpn.allowedTCPPorts = [ <TCP ports to allow inbound on the VPN interface.> ];
   vpn.allowedUDPPorts = [ <UDP ports to allow inbound on the VPN interface.> ];
 };
@@ -85,7 +88,7 @@ systemd.services.<name>.vpnConfinement = {
       "192.168.0.0/24"
     ];
     portMappings = [
-      { from = 9091; to = 9091; }
+      9091 # Coerced to { from = 9091; to = 9091; protocol = "tcp"; }
     ];
     vpn.allowedTCPPorts = [ 60729 ];
     vpn.allowedUDPPorts = [ 60729 ];

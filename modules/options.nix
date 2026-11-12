@@ -10,6 +10,7 @@
     (lib.types)
     listOf
     submodule
+    coercedTo
     path
     port
     enum
@@ -172,30 +173,34 @@ in {
     };
 
     portMappings = mkOption {
-      type = listOf (submodule {
-        options = {
-          from = mkOption {
-            example = 80;
-            type = port;
-            description = "Port on the default netns.";
+      type = listOf (coercedTo port (p: {
+          from = p;
+          to = p;
+        })
+        (submodule {
+          options = {
+            from = mkOption {
+              example = 80;
+              type = port;
+              description = "Port on the default netns.";
+            };
+            to = mkOption {
+              example = 443;
+              type = port;
+              description = "Port on the VPN netns.";
+            };
+            protocol = mkOption {
+              default = "tcp";
+              example = "both";
+              type = enum [
+                "tcp"
+                "udp"
+                "both"
+              ];
+              description = "The transport layer protocol to use.";
+            };
           };
-          to = mkOption {
-            example = 443;
-            type = port;
-            description = "Port on the VPN netns.";
-          };
-          protocol = mkOption {
-            default = "tcp";
-            example = "both";
-            type = enum [
-              "tcp"
-              "udp"
-              "both"
-            ];
-            description = "The transport layer protocol to use.";
-          };
-        };
-      });
+        }));
       default = [];
       description = ''
         A list of port mappings from
@@ -207,6 +212,7 @@ in {
         in the VPN netns.
       '';
       example = [
+        80 # coerced to the form below
         {
           from = 80;
           to = 80;
