@@ -1,16 +1,38 @@
-{lib, ...}: let
+{
+  lib,
+  config,
+  name,
+  ...
+}: let
   inherit (import ../lib/types.nix {inherit lib;}) ipAddress ipv4 ipv6;
   inherit (lib) mkEnableOption mkOption;
   inherit
     (lib.types)
     listOf
     submodule
+    coercedTo
     path
     port
     enum
+    str
     ;
+
+  portsFor = proto:
+    map (p: p.port)
+    (lib.filter (p: p.protocol == proto || p.protocol == "both") config.openVPNPorts);
 in {
+  imports = [(lib.mkRenamedOptionModule ["accessibleFrom"] ["allowedIngress"])];
+
   options = {
+    # Collected by vpn-netns.nix into the top-level `warnings`.
+    # Declaring it here also lets mkRenamedOptionModule emit its warning.
+    warnings = mkOption {
+      type = listOf str;
+      default = [];
+      internal = true;
+      visible = false;
+    };
+
     enable =
       mkEnableOption "vpn netns"
       // {
@@ -25,7 +47,7 @@ in {
         '';
       };
 
-    accessibleFrom = mkOption {
+    allowedIngress = mkOption {
       type = listOf ipAddress;
       default = [];
       description = ''
@@ -108,6 +130,24 @@ in {
       '';
     };
 
+    vpn = {
+      allowedTCPPorts = mkOption {
+        type = listOf port;
+        default = [];
+        description = ''
+          TCP ports to allow inbound on the VPN interface.
+        '';
+      };
+
+      allowedUDPPorts = mkOption {
+        type = listOf port;
+        default = [];
+        description = ''
+          UDP ports to allow inbound on the VPN interface.
+        '';
+      };
+    };
+
     openVPNPorts = mkOption {
       type = listOf (submodule {
         options = {
@@ -128,36 +168,39 @@ in {
         };
       });
       default = [];
-      description = ''
-        Ports that should be accessible through the VPN interface.
-      '';
+      visible = false;
+      description = "Deprecated: use vpn.allowedTCPPorts and vpn.allowedUDPPorts.";
     };
 
     portMappings = mkOption {
-      type = listOf (submodule {
-        options = {
-          from = mkOption {
-            example = 80;
-            type = port;
-            description = "Port on the default netns.";
+      type = listOf (coercedTo port (p: {
+          from = p;
+          to = p;
+        })
+        (submodule {
+          options = {
+            from = mkOption {
+              example = 80;
+              type = port;
+              description = "Port on the default netns.";
+            };
+            to = mkOption {
+              example = 443;
+              type = port;
+              description = "Port on the VPN netns.";
+            };
+            protocol = mkOption {
+              default = "tcp";
+              example = "both";
+              type = enum [
+                "tcp"
+                "udp"
+                "both"
+              ];
+              description = "The transport layer protocol to use.";
+            };
           };
-          to = mkOption {
-            example = 443;
-            type = port;
-            description = "Port on the VPN netns.";
-          };
-          protocol = mkOption {
-            default = "tcp";
-            example = "both";
-            type = enum [
-              "tcp"
-              "udp"
-              "both"
-            ];
-            description = "The transport layer protocol to use.";
-          };
-        };
-      });
+        }));
       default = [];
       description = ''
         A list of port mappings from
@@ -169,6 +212,7 @@ in {
         in the VPN netns.
       '';
       example = [
+        80 # coerced to the form below
         {
           from = 80;
           to = 80;
@@ -185,5 +229,16 @@ in {
         Path to a wg-quick config file.
       '';
     };
+  };
+
+  config = {
+    warnings = lib.optional (config.openVPNPorts != []) ''
+      vpnNamespaces.${name}.openVPNPorts is deprecated and will be removed.
+      Use vpnNamespaces.${name}.vpn.allowedTCPPorts and
+      vpnNamespaces.${name}.vpn.allowedUDPPorts instead.
+    '';
+
+    vpn.allowedTCPPorts = portsFor "tcp";
+    vpn.allowedUDPPorts = portsFor "udp";
   };
 }

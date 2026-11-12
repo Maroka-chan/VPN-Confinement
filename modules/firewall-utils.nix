@@ -79,19 +79,9 @@ in rec {
       portMappings
     );
 
-  generateAllowedPortRules = netns: interface: allowedPorts:
+  generateAllowedPortRules = netns: interface: allowedPorts: protocol:
     generateNetNSInputRules netns interface (
-      foldl' (
-        acc: port:
-          acc
-          ++ [
-            {
-              value = port.port;
-              protocol = port.protocol;
-            }
-          ]
-      ) []
-      allowedPorts
+      foldl' (acc: value: acc ++ [{inherit value protocol;}]) [] allowedPorts
     );
 
   addIPRules = argset:

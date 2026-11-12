@@ -1,4 +1,4 @@
-{
+{lib, ...}: {
   name = "VPN-Confinement Tests";
 
   nodes = let
@@ -24,7 +24,7 @@
     basicNetns = {
       vpnNamespaces.wg = {
         enable = true;
-        accessibleFrom = [
+        allowedIngress = [
           "192.168.0.0/24"
           "10.0.0.0/8"
           "127.0.0.1"
@@ -32,8 +32,8 @@
           "::"
         ];
         # 172.16.0.99 and fd25:9ab6:6134::99 are deliberately outside the
-        # accessibleFrom subnets, so they prove allowedEgress installs its
-        # own routes. 10.0.0.0/8 deliberately duplicates an accessibleFrom
+        # allowedIngress subnets, so they prove allowedEgress installs its
+        # own routes. 10.0.0.0/8 deliberately duplicates an allowedIngress
         # entry, so it proves the overlap cannot fail the start script.
         allowedEgress = [
           "172.16.0.99"
@@ -48,17 +48,18 @@
         # Test unconventional name for config file
         wireguardConfigFile = "/etc/wireguard/wireguardconfiguration.txt";
         portMappings = [
+          # bare port, coerced to a symmetric tcp mapping
+          9091
+          # the explicit form still works
           {
-            from = 9091;
-            to = 9091;
+            from = 9092;
+            to = 9092;
           }
         ];
-        openVPNPorts = [
-          {
-            port = 60729;
-            protocol = "both";
-          }
-        ];
+        # Distinct ports per protocol, so a rule with the wrong
+        # protocol is detectable
+        vpn.allowedTCPPorts = [60729];
+        vpn.allowedUDPPorts = [60730];
       };
     };
 
@@ -132,6 +133,41 @@
       }
     ];
 
+    machine_renamed_option = createNode [
+      {
+        vpnNamespaces.wg = {
+          enable = true;
+          wireguardConfigFile = "/etc/wireguard/wg0.conf";
+          # deliberately uses the pre-rename option name, so this machine
+          # proves the mkRenamedOptionModule alias keeps old configs working
+          accessibleFrom = ["192.168.0.0/24"];
+
+          # deprecated openVPNPorts, covering every protocol value. The
+          # vpn.allowedTCPPorts entry proves both forms merge.
+          openVPNPorts = [
+            {port = 50001;} # default protocol, tcp
+            {
+              port = 50002;
+              protocol = "udp";
+            }
+            {
+              port = 50003;
+              protocol = "both";
+            }
+          ];
+          vpn.allowedTCPPorts = [50004];
+        };
+
+        # uses the pre-rename service option names. Never started (no
+        # wantedBy); it only exists for the evaluation-time checks.
+        systemd.services.demo = {
+          script = "sleep infinity";
+          vpnconfinement.enable = true;
+          vpnconfinement.vpnnamespace = "wg";
+        };
+      }
+    ];
+
     machine_arbitrary_config_name = createNode [
       {
         vpnNamespaces.vpn-nam = {
@@ -191,7 +227,24 @@
     ];
   };
 
-  testScript = ''
+  testScript = {nodes, ...}: let
+    hasWarning = node: option: lib.any (lib.hasInfix option) node.warnings;
+  in
+    # Deprecation warnings are checked at evaluation time, before any VM boots
+    assert lib.assertMsg (hasWarning nodes.machine_renamed_option "openVPNPorts")
+    "expected an openVPNPorts deprecation warning on machine_renamed_option";
+    assert lib.assertMsg (hasWarning nodes.machine_renamed_option "accessibleFrom")
+    "expected an accessibleFrom rename warning on machine_renamed_option";
+    assert lib.assertMsg (!hasWarning nodes.machine_dhcp "openVPNPorts")
+    "unexpected openVPNPorts warning on machine_dhcp";
+    assert lib.assertMsg (!hasWarning nodes.machine_dhcp "accessibleFrom")
+    "unexpected accessibleFrom warning on machine_dhcp";
+    assert lib.assertMsg (hasWarning nodes.machine_renamed_option "vpnconfinement")
+    "expected a vpnconfinement rename warning on machine_renamed_option";
+    assert lib.assertMsg (!hasWarning nodes.machine_resolved "vpnconfinement")
+    "unexpected vpnconfinement warning on machine_resolved";
+    assert lib.assertMsg nodes.machine_renamed_option.systemd.services.demo.vpnConfinement.enable
+    "expected vpnconfinement.enable to set vpnConfinement.enable"; ''
     start_all()
 
     machine_dhcp.wait_for_unit("wg.service")
@@ -201,6 +254,20 @@
       '[ $(cat /sys/class/net/veth-wg-br/operstate) == "up" ]')
     machine_dhcp.succeed(
       '[ $(ip netns exec wg cat /sys/class/net/veth-wg/operstate) == "up" ]')
+
+    with subtest("vpn.allowedTCPPorts/allowedUDPPorts open the right protocol"):
+        for fw in ["iptables", "ip6tables"]:
+            rules = machine_dhcp.succeed(f"ip netns exec wg {fw} -S INPUT")
+            assert "-A INPUT -i wg0 -p tcp -m tcp --dport 60729 -j ACCEPT" in rules, rules
+            assert "-A INPUT -i wg0 -p udp -m udp --dport 60730 -j ACCEPT" in rules, rules
+            assert "-p udp -m udp --dport 60729" not in rules, rules
+            assert "-p tcp -m tcp --dport 60730" not in rules, rules
+
+    with subtest("a bare port in portMappings becomes a symmetric tcp mapping"):
+        rules = machine_dhcp.succeed("iptables -t nat -S wg-prerouting")
+        assert "-p tcp -m tcp --dport 9091 -j DNAT --to-destination 192.168.15.1:9091" in rules, rules
+        assert "-p udp -m udp --dport 9091" not in rules, rules
+        assert "-p tcp -m tcp --dport 9092 -j DNAT --to-destination 192.168.15.1:9092" in rules, rules
 
     # allowedEgress installs a route via the bridge and an accept that
     # precedes the veth NEW drop, for v4 and v6
@@ -303,6 +370,23 @@
         cat /sys/class/net/veth-vpnname/operstate) == "up" ]')
 
     machine_dash_in_name.wait_for_unit("vpn-nam.service")
+
+    machine_renamed_option.wait_for_unit("wg.service")
+    machine_renamed_option.succeed(
+      'ip netns exec wg ip route get 192.168.0.1 | grep -q "via 192.168.15.5"')
+
+    with subtest("deprecated openVPNPorts is converted to vpn.allowed*Ports"):
+        rules = machine_renamed_option.succeed("ip netns exec wg iptables -S INPUT")
+        for proto, port in [
+            ("tcp", 50001),
+            ("udp", 50002),
+            ("tcp", 50003),
+            ("udp", 50003),
+            ("tcp", 50004),
+        ]:
+            assert f"-A INPUT -i wg0 -p {proto} -m {proto} --dport {port} -j ACCEPT" in rules, rules
+        assert "-p udp -m udp --dport 50001" not in rules, rules
+        assert "-p tcp -m tcp --dport 50002" not in rules, rules
 
     machine_dash_in_name.succeed(
       '[ $(cat /sys/class/net/vpn-nam-br/operstate) == "up" ]')
