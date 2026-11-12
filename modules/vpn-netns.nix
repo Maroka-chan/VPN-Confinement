@@ -12,6 +12,8 @@
     nameValuePair
     mapAttrs'
     optionalString
+    concatMap
+    attrValues
     ;
   inherit (lib.types) attrsOf submodule;
 
@@ -51,6 +53,8 @@ in {
   };
 
   config = mkIf (config.vpnNamespaces != {}) {
+    warnings = concatMap (ns: ns.warnings) (attrValues config.vpnNamespaces);
+
     boot.kernel.sysctl."net.ipv4.ip_forward" = 1;
     boot.kernel.sysctl."net.ipv6.conf.all.forwarding" = mkIf isIPv6Enabled 1;
 

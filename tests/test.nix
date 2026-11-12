@@ -1,4 +1,4 @@
-{
+{lib, ...}: {
   name = "VPN-Confinement Tests";
 
   nodes = let
@@ -141,6 +141,14 @@
           # proves the mkRenamedOptionModule alias keeps old configs working
           accessibleFrom = ["192.168.0.0/24"];
         };
+
+        # uses the pre-rename service option names. Never started (no
+        # wantedBy); it only exists for the evaluation-time checks.
+        systemd.services.demo = {
+          script = "sleep infinity";
+          vpnconfinement.enable = true;
+          vpnconfinement.vpnnamespace = "wg";
+        };
       }
     ];
 
@@ -203,7 +211,20 @@
     ];
   };
 
-  testScript = ''
+  testScript = {nodes, ...}: let
+    hasWarning = node: option: lib.any (lib.hasInfix option) node.warnings;
+  in
+    # Deprecation warnings are checked at evaluation time, before any VM boots
+    assert lib.assertMsg (hasWarning nodes.machine_renamed_option "accessibleFrom")
+    "expected an accessibleFrom rename warning on machine_renamed_option";
+    assert lib.assertMsg (!hasWarning nodes.machine_dhcp "accessibleFrom")
+    "unexpected accessibleFrom warning on machine_dhcp";
+    assert lib.assertMsg (hasWarning nodes.machine_renamed_option "vpnconfinement")
+    "expected a vpnconfinement rename warning on machine_renamed_option";
+    assert lib.assertMsg (!hasWarning nodes.machine_resolved "vpnconfinement")
+    "unexpected vpnconfinement warning on machine_resolved";
+    assert lib.assertMsg nodes.machine_renamed_option.systemd.services.demo.vpnConfinement.enable
+    "expected vpnconfinement.enable to set vpnConfinement.enable"; ''
     start_all()
 
     machine_dhcp.wait_for_unit("wg.service")

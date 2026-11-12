@@ -8,6 +8,7 @@
     path
     port
     enum
+    str
     ;
 in {
   imports = [
@@ -15,6 +16,15 @@ in {
   ];
 
   options = {
+    # Collected by vpn-netns.nix into the top-level `warnings`.
+    # Declaring it here also lets mkRenamedOptionModule emit its warning.
+    warnings = mkOption {
+      type = listOf str;
+      default = [];
+      internal = true;
+      visible = false;
+    };
+
     enable =
       mkEnableOption "vpn netns"
       // {
