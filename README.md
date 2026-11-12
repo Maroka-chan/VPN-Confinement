@@ -55,12 +55,10 @@ vpnNamespaces.<name> = { # The name is limited to 7 characters
   portMappings = [{
       from = <port on host>;
       to = <port in VPN network namespace>;
-      protocol = "<transport protocol>"; # protocol = "tcp"(default), "udp", or "both"
+      protocol = "<transport protocol>"; # protocol = "tcp" (default), "udp", or "both"
   }];
-  openVPNPorts = [{
-    port = <port to access through VPN interface>;
-    protocol = "<transport protocol>"; # protocol = "tcp"(default), "udp", or "both"
-  }];
+  vpn.allowedTCPPorts = [ <TCP ports to allow inbound on the VPN interface.> ];
+  vpn.allowedUDPPorts = [ <UDP ports to allow inbound on the VPN interface.> ];
 };
 ```
 
@@ -89,10 +87,8 @@ systemd.services.<name>.vpnConfinement = {
     portMappings = [
       { from = 9091; to = 9091; }
     ];
-    openVPNPorts = [{
-      port = 60729;
-      protocol = "both";
-    }];
+    vpn.allowedTCPPorts = [ 60729 ];
+    vpn.allowedUDPPorts = [ 60729 ];
   };
 
   # Add systemd service to VPN network namespace

@@ -378,6 +378,7 @@ in
       ${generatePortMapRules netnsName "veth-${netnsName}" def.portMappings}
 
       # Add VPN INPUT rules
-      ${generateAllowedPortRules netnsName "${netnsName}0" def.openVPNPorts}
+      ${generateAllowedPortRules netnsName "${netnsName}0" def.vpn.allowedTCPPorts "tcp"}
+      ${generateAllowedPortRules netnsName "${netnsName}0" def.vpn.allowedUDPPorts "udp"}
     '';
   }

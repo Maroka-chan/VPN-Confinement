@@ -1,4 +1,9 @@
-{lib, ...}: let
+{
+  lib,
+  config,
+  name,
+  ...
+}: let
   inherit (import ../lib/types.nix {inherit lib;}) ipAddress ipv4 ipv6;
   inherit (lib) mkEnableOption mkOption;
   inherit
@@ -10,10 +15,12 @@
     enum
     str
     ;
+
+  portsFor = proto:
+    map (p: p.port)
+    (lib.filter (p: p.protocol == proto || p.protocol == "both") config.openVPNPorts);
 in {
-  imports = [
-    (lib.mkRenamedOptionModule ["accessibleFrom"] ["allowedIngress"])
-  ];
+  imports = [(lib.mkRenamedOptionModule ["accessibleFrom"] ["allowedIngress"])];
 
   options = {
     # Collected by vpn-netns.nix into the top-level `warnings`.
@@ -122,6 +129,24 @@ in {
       '';
     };
 
+    vpn = {
+      allowedTCPPorts = mkOption {
+        type = listOf port;
+        default = [];
+        description = ''
+          TCP ports to allow inbound on the VPN interface.
+        '';
+      };
+
+      allowedUDPPorts = mkOption {
+        type = listOf port;
+        default = [];
+        description = ''
+          UDP ports to allow inbound on the VPN interface.
+        '';
+      };
+    };
+
     openVPNPorts = mkOption {
       type = listOf (submodule {
         options = {
@@ -142,9 +167,8 @@ in {
         };
       });
       default = [];
-      description = ''
-        Ports that should be accessible through the VPN interface.
-      '';
+      visible = false;
+      description = "Deprecated: use vpn.allowedTCPPorts and vpn.allowedUDPPorts.";
     };
 
     portMappings = mkOption {
@@ -199,5 +223,16 @@ in {
         Path to a wg-quick config file.
       '';
     };
+  };
+
+  config = {
+    warnings = lib.optional (config.openVPNPorts != []) ''
+      vpnNamespaces.${name}.openVPNPorts is deprecated and will be removed.
+      Use vpnNamespaces.${name}.vpn.allowedTCPPorts and
+      vpnNamespaces.${name}.vpn.allowedUDPPorts instead.
+    '';
+
+    vpn.allowedTCPPorts = portsFor "tcp";
+    vpn.allowedUDPPorts = portsFor "udp";
   };
 }
