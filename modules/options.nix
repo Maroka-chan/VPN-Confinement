@@ -221,6 +221,72 @@ in {
       ];
     };
 
+    dnssd = mkOption {
+      type = listOf (submodule {
+        options = {
+          name = mkOption {
+            type = str;
+            example = "My service on %H";
+            description = ''
+              Instance name shown to clients browsing the network.
+              Supports systemd.dnssd(5) specifiers, e.g. `%H` for the
+              host name.
+            '';
+          };
+          type = mkOption {
+            type = lib.types.strMatching "_[A-Za-z0-9-]+\\._(tcp|udp)";
+            example = "_http._tcp";
+            description = ''
+              DNS-SD service type, e.g. `_http._tcp`.
+              The protocol suffix decides which port mappings
+              {option}`port` can refer to.
+            '';
+          };
+          port = mkOption {
+            type = port;
+            example = 8080;
+            description = ''
+              Port to announce. Must be the host side (`from`) of one
+              of the namespace's {option}`portMappings`, as that is
+              where clients on the LAN can reach the service.
+            '';
+          };
+          txt = mkOption {
+            type = listOf (lib.types.strMatching "[^ =]+(=[^ ]*)?");
+            default = [];
+            example = ["path=/" "version=1"];
+            description = ''
+              TXT record entries, as `key=value` without spaces.
+            '';
+          };
+        };
+      });
+      default = [];
+      description = ''
+        DNS-SD services to announce over mDNS on behalf of the namespace,
+        so clients on the LAN can discover them.
+
+        Services in the namespace can't announce themselves: mDNS is
+        link-local multicast and doesn't cross from the namespace's bridge
+        to the LAN, the kill switch drops new outgoing traffic on the veth,
+        and the namespace's own address isn't reachable from the LAN anyway.
+        Instead the host announces them with its own address and the mapped
+        port, using systemd-resolved, so nothing leaves the namespace.
+
+        Requires systemd-resolved, and mDNS must be enabled on the LAN link:
+        with NetworkManager, set `connection.mdns` to `2` (yes), e.g. via
+        `networking.networkmanager.settings.connection."connection.mdns" = 2;`.
+      '';
+      example = [
+        {
+          name = "Transmission on %H";
+          type = "_http._tcp";
+          port = 9091;
+          txt = ["path=/transmission/web/"];
+        }
+      ];
+    };
+
     wireguardConfigFile = mkOption {
       type = path;
       default = null;

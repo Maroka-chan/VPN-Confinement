@@ -60,8 +60,57 @@ vpnNamespaces.<name> = { # The name is limited to 7 characters
   ];
   vpn.allowedTCPPorts = [ <TCP ports to allow inbound on the VPN interface.> ];
   vpn.allowedUDPPorts = [ <UDP ports to allow inbound on the VPN interface.> ];
+  dnssd = [ # Services to announce on the LAN over mDNS (see below)
+    {
+      name = "<instance name>"; # e.g. "My service on %H"
+      type = "<service type>";  # e.g. "_http._tcp"
+      port = <port on host>;    # The `from` side of a port mapping
+      txt = [ "<key=value>" ];  # Optional
+    }
+  ];
 };
 ```
+
+## Announce services on the LAN (mDNS / DNS-SD)
+
+Services in the namespace can't announce themselves: mDNS is link-local
+multicast and doesn't leave the namespace's bridge, the kill switch drops new
+outgoing traffic on the veth, and the namespace's address isn't reachable from
+the LAN anyway. With `dnssd`, the host announces them instead, with its own
+address and the mapped port, using systemd-resolved. Nothing leaves the
+namespace.
+
+```nix
+services.resolved.enable = true;
+
+vpnNamespaces.wg = {
+  # ...
+  portMappings = [ 9091 ];
+  dnssd = [
+    {
+      name = "Transmission on %H";
+      type = "_http._tcp";
+      port = 9091;
+      txt = [ "path=/transmission/web/" ];
+    }
+  ];
+};
+```
+
+This enables mDNS in systemd-resolved and opens UDP port 5353. mDNS must also
+be enabled on the LAN link, which depends on how the host manages its network:
+
+```nix
+# NetworkManager
+networking.networkmanager.settings.connection."connection.mdns" = 2; # yes
+
+# systemd-networkd
+systemd.network.networks."<lan network>".networkConfig.MulticastDNS = true;
+```
+
+Check the announcement from another machine on the LAN with
+`avahi-browse --resolve --terminate _http._tcp`. Only one mDNS responder can
+run on a host, so don't enable avahi alongside this.
 
 ## Add systemd service to VPN network namespace
 

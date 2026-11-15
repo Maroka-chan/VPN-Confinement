@@ -10,6 +10,7 @@
       systems = ["x86_64-linux"];
       perSystem = {pkgs, ...}: {
         checks.interfaces = pkgs.testers.runNixOSTest ./test.nix;
+        checks.dnssd = pkgs.testers.runNixOSTest ./dnssd.nix;
       };
     };
 }
