@@ -10,6 +10,7 @@
       systems = ["x86_64-linux"];
       perSystem = {pkgs, ...}: {
         checks.interfaces = pkgs.testers.runNixOSTest ./test.nix;
+        checks.resolv = pkgs.testers.runNixOSTest ./resolv.nix;
       };
     };
 }

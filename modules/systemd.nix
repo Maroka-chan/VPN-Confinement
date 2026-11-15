@@ -25,6 +25,16 @@
     listOf
     ;
 
+  # With systemd-resolved, /etc/resolv.conf is a symlink into this directory,
+  # whose files resolved replaces (writes a new file and renames it over the
+  # old one) whenever DNS settings change. A bind mount onto such a file stays
+  # on the replaced file, so confined services would silently fall back to the
+  # host's resolver, which isn't reachable from the namespace. Instead they
+  # get their own empty directory there, holding the namespace's resolv.conf.
+  # That also hides resolved's socket, so lookups can't go around the VPN.
+  resolvedDir = "/run/systemd/resolve";
+  resolvedEnabled = config.services.resolved.enable or false;
+
   # Renamed options of each systemd service, as paths within the service
   renamedOptions = [
     {
@@ -110,9 +120,15 @@ in {
                     "/run/resolvconf"
                   ];
 
-                  BindReadOnlyPaths = [
-                    "/etc/netns/${vpn}/resolv.conf:/etc/resolv.conf:norbind"
-                  ];
+                  TemporaryFileSystem = mkIf resolvedEnabled ["${resolvedDir}:ro"];
+
+                  BindReadOnlyPaths =
+                    if resolvedEnabled
+                    then
+                      # Both names /etc/resolv.conf may point to (stub or uplink mode)
+                      map (file: "/etc/netns/${vpn}/resolv.conf:${resolvedDir}/${file}:norbind")
+                      ["stub-resolv.conf" "resolv.conf"]
+                    else ["/etc/netns/${vpn}/resolv.conf:/etc/resolv.conf:norbind"];
                 };
               })
           ];
