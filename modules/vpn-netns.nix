@@ -136,12 +136,19 @@ in {
         nameValuePair "systemd/dnssd/${s.fileName}.dnssd" {text = dnssdFile s;})
       dnssdServices);
 
-      # mDNS also has to be enabled on the LAN link itself, e.g. NetworkManager's
-      # connection.mdns, which is host specific (see the dnssd option)
       services.resolved =
         if options.services.resolved ? settings
         then {settings.Resolve.MulticastDNS = mkDefault "yes";}
         else {extraConfig = "MulticastDNS=yes";};
+
+      # NetworkManager and systemd-networkd turn mDNS off on the links they
+      # manage unless configured. For NetworkManager, enable it as the default
+      # for connections that don't set connection.mdns themselves. networkd
+      # has to be configured per network, which only the host knows (see the
+      # dnssd option); unmanaged links follow resolved's global setting.
+      networking.networkmanager.connectionConfig = mkIf config.networking.networkmanager.enable {
+        "connection.mdns" = mkDefault 2; # yes
+      };
 
       networking.firewall.allowedUDPPorts = [5353];
     })

@@ -98,15 +98,16 @@ vpnNamespaces.wg = {
 ```
 
 This enables mDNS in systemd-resolved and opens UDP port 5353. mDNS must also
-be enabled on the LAN link, which depends on how the host manages its network:
+be enabled on the LAN link, which depends on what manages it:
 
-```nix
-# NetworkManager
-networking.networkmanager.settings.connection."connection.mdns" = 2; # yes
-
-# systemd-networkd
-systemd.network.networks."<lan network>".networkConfig.MulticastDNS = true;
-```
+- **NetworkManager:** done automatically, as the default for connections that
+  don't set `connection.mdns` themselves.
+- **systemd-networkd:** turns mDNS off on its links unless configured, so enable
+  it on the LAN network yourself, as the module can't know which one that is:
+  ```nix
+  systemd.network.networks."<lan network>".networkConfig.MulticastDNS = true;
+  ```
+- **Scripted networking** (neither of the above): nothing to do.
 
 Check the announcement from another machine on the LAN with
 `avahi-browse --resolve --terminate _http._tcp`. Only one mDNS responder can

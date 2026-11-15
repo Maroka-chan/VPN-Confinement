@@ -273,9 +273,13 @@ in {
         Instead the host announces them with its own address and the mapped
         port, using systemd-resolved, so nothing leaves the namespace.
 
-        Requires systemd-resolved, and mDNS must be enabled on the LAN link:
-        with NetworkManager, set `connection.mdns` to `2` (yes), e.g. via
-        `networking.networkmanager.settings.connection."connection.mdns" = 2;`.
+        Requires systemd-resolved. mDNS must also be enabled on the LAN link,
+        which depends on what manages it:
+        - NetworkManager: done by default (`connection.mdns = 2` for
+          connections that don't set it themselves).
+        - systemd-networkd: enable it on the LAN network yourself, e.g.
+          `systemd.network.networks.<lan>.networkConfig.MulticastDNS = true;`.
+        - Scripted networking: nothing to do, links follow resolved's setting.
       '';
       example = [
         {
