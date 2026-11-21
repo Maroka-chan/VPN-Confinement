@@ -156,22 +156,25 @@ in
       fi
 
       # Wait for endpoint to be reachable
-      attempt=1
-      max_retries=5
-      success=false
-      echo -n "Waiting for wireguard endpoint '$EndpointIP' to be reachable..."
-      while [[ $attempt -le $max_retries ]]; do
-        ping -c 1 "$EndpointIP" > /dev/null 2>&1 && { success=true; break; }
-        sleep 1
-        attempt=$((attempt + 1))
-      done
+      disableConnectivityCheck="${lib.boolToString def.disableConnectivityCheck}"
+      if [[ "$disableConnectivityCheck" == false ]]; then
+        attempt=1
+        max_retries=5
+        success=false
+        echo -n "Waiting for wireguard endpoint '$EndpointIP' to be reachable..."
+        while [[ $attempt -le $max_retries ]]; do
+          ping -c 1 "$EndpointIP" > /dev/null 2>&1 && { success=true; break; }
+          sleep 1
+          attempt=$((attempt + 1))
+        done
 
-      if ! $success; then
-        echo # The last echo did not print a newline, print one now
-        echo "failed to reach '$EndpointIP' after $max_retries attempts" >&2
-        exit 1
-      else
-        echo " success!"
+        if ! $success; then
+          echo # The last echo did not print a newline, print one now
+          echo "failed to reach '$EndpointIP' after $max_retries attempts" >&2
+          exit 1
+        else
+          echo " success!"
+        fi
       fi
 
       # Set wireguard config
